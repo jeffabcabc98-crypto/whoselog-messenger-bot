@@ -67,7 +67,6 @@ def check_rate_limit(user_id, msg_type):
 
     return True
 
-
 # =========================
 # 隨機暱稱
 # =========================
@@ -123,7 +122,8 @@ def send_message(user_id, text):
     response = requests.post(
         url,
         headers=headers,
-        json=data
+        json=data,
+        timeout=15
     )
 
     print(response.text)
@@ -152,7 +152,8 @@ def send_attachment(user_id, attachment):
     response = requests.post(
         url,
         headers=headers,
-        json=data
+        json=data,
+        timeout=30
     )
 
     print(response.text)
@@ -199,10 +200,13 @@ def handle_attachment(user_id, attachments):
 
             limit_type = None
 
-            # GIF
+            # GIF 判斷
             if (
                 attachment_type == "image"
-                and ".gif" in url.lower()
+                and (
+                    ".gif" in url.lower()
+                    or "gif" in url.lower()
+                )
             ):
 
                 limit_type = "gif"
@@ -302,7 +306,6 @@ def webhook():
 
                         text = message["text"]
 
-                        # 防洗版
                         if not check_rate_limit(
                             sender_id,
                             "text"
@@ -372,7 +375,6 @@ def start_match(user_id):
 
         target = row["user_id"]
 
-        # 黑名單檢查
         check1 = supabase.table("blacklist") \
             .select("*") \
             .eq("user_id", user_id) \
@@ -388,11 +390,6 @@ def start_match(user_id):
         if check1.data or check2.data:
             continue
 
-        partner = target
-        break
-
-    if partner:
-
         one_hour_ago = datetime.now(
             timezone.utc
         ) - timedelta(hours=1)
@@ -400,8 +397,8 @@ def start_match(user_id):
         recent = supabase.table("recent_pairs") \
             .select("*") \
             .or_(
-                f"and(user1.eq.{user_id},user2.eq.{partner}),"
-                f"and(user1.eq.{partner},user2.eq.{user_id})"
+                f"and(user1.eq.{user_id},user2.eq.{target}),"
+                f"and(user1.eq.{target},user2.eq.{user_id})"
             ) \
             .gte(
                 "created_at",
@@ -410,13 +407,12 @@ def start_match(user_id):
             .execute()
 
         if recent.data:
+            continue
 
-            send_message(
-                user_id,
-                "⏳ 正在尋找新的聊天對象..."
-            )
+        partner = target
+        break
 
-            return
+    if partner:
 
         supabase.table("waiting_users") \
             .delete() \
@@ -458,11 +454,18 @@ def start_match(user_id):
 
     else:
 
-        supabase.table("waiting_users") \
-            .upsert({
-                "user_id": user_id
-            }) \
+        existing = supabase.table("waiting_users") \
+            .select("*") \
+            .eq("user_id", user_id) \
             .execute()
+
+        if not existing.data:
+
+            supabase.table("waiting_users") \
+                .insert({
+                    "user_id": user_id
+                }) \
+                .execute()
 
         send_message(
             user_id,
@@ -495,7 +498,6 @@ def handle_text(user_id, text):
 
                 target_user = pending.data[0]["target_user_id"]
 
-                # 是
                 if text == "是":
 
                     supabase.table("pending_actions") \
@@ -544,7 +546,6 @@ def handle_text(user_id, text):
 
                     return
 
-                # 否
                 if text == "否":
 
                     supabase.table("pending_actions") \
@@ -566,18 +567,14 @@ def handle_text(user_id, text):
 
                 return
 
-        # =========================
         # 開始
-        # =========================
         if text == "開始":
 
             start_match(user_id)
 
             return
 
-        # =========================
         # 取消配對
-        # =========================
         if text == "取消配對":
 
             check = supabase.table("waiting_users") \
@@ -606,9 +603,7 @@ def handle_text(user_id, text):
 
             return
 
-        # =========================
         # 解除配對限制
-        # =========================
         if text == "解除配對限制":
 
             supabase.table("recent_pairs") \
@@ -620,14 +615,12 @@ def handle_text(user_id, text):
 
             send_message(
                 user_id,
-                "✅ 已解除配對限制，現在可以重新配對到之前的人"
+                "✅ 已解除配對限制"
             )
 
             return
 
-        # =========================
         # 下一位
-        # =========================
         if text == "下一位":
 
             result = supabase.table("chat_pairs") \
@@ -639,6 +632,11 @@ def handle_text(user_id, text):
             if result.data:
 
                 partner = result.data[0]["partner_id"]
+
+                supabase.table("recent_pairs").insert({
+                    "user1": user_id,
+                    "user2": partner
+                }).execute()
 
                 supabase.table("chat_pairs") \
                     .delete() \
@@ -667,9 +665,7 @@ def handle_text(user_id, text):
 
             return
 
-        # =========================
         # 離開
-        # =========================
         if text == "離開":
 
             result = supabase.table("chat_pairs") \
@@ -713,9 +709,7 @@ def handle_text(user_id, text):
 
             return
 
-        # =========================
         # 封鎖
-        # =========================
         if text == "封鎖":
 
             result = supabase.table("chat_pairs") \
@@ -765,22 +759,20 @@ def handle_text(user_id, text):
 
             send_message(
                 user_id,
-                "🚫 已成功將對方封鎖，離開聊天室了"
+                "🚫 已成功將對方封鎖"
             )
 
             try:
                 send_message(
                     partner,
-                    "🥲 對方似乎不喜歡你，已經離開聊天室"
+                    "🥲 對方似乎不喜歡你"
                 )
             except:
                 pass
 
             return
 
-        # =========================
         # 黑名單
-        # =========================
         if text == "黑名單":
 
             result = supabase.table("blacklist") \
@@ -792,7 +784,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "📭 你的黑名單目前是空的"
+                    "📭 黑名單目前是空的"
                 )
                 return
 
@@ -813,9 +805,7 @@ def handle_text(user_id, text):
 
             return
 
-        # =========================
         # 解除封鎖列表
-        # =========================
         if text == "解除封鎖":
 
             result = supabase.table("blacklist") \
@@ -850,9 +840,7 @@ def handle_text(user_id, text):
 
             return
 
-        # =========================
         # 執行解除封鎖
-        # =========================
         if text.startswith("解除封鎖 "):
 
             parts = text.split()
@@ -861,7 +849,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "❌ 格式錯誤\n例如：解除封鎖 1"
+                    "❌ 格式錯誤"
                 )
                 return
 
@@ -915,9 +903,7 @@ def handle_text(user_id, text):
 
             return
 
-        # =========================
         # 檢舉
-        # =========================
         if text == "檢舉":
 
             result = supabase.table("chat_pairs") \
@@ -937,19 +923,16 @@ def handle_text(user_id, text):
 
             partner = result.data[0]["partner_id"]
 
-            # 新增檢舉紀錄
             supabase.table("reports").insert({
                 "reporter_id": user_id,
                 "reported_user_id": partner
             }).execute()
 
-            # 清除舊狀態
             supabase.table("pending_actions") \
                 .delete() \
                 .eq("user_id", user_id) \
                 .execute()
 
-            # 建立等待確認
             supabase.table("pending_actions").insert({
                 "user_id": user_id,
                 "action": "report_confirm",
@@ -963,9 +946,7 @@ def handle_text(user_id, text):
 
             return
 
-        # =========================
         # 聊天轉發
-        # =========================
         result = supabase.table("chat_pairs") \
             .select("*") \
             .eq("user_id", user_id) \
