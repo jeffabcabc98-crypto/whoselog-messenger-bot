@@ -132,6 +132,9 @@ def handle_text(user_id, text):
 
     try:
 
+        # =========================
+        # 開始配對
+        # =========================
         if text == "開始":
 
             check_waiting = supabase.table("waiting_users") \
@@ -255,6 +258,9 @@ def handle_text(user_id, text):
 
             return
 
+        # =========================
+        # 離開聊天室
+        # =========================
         if text == "離開":
 
             result = supabase.table("chat_pairs") \
@@ -289,6 +295,179 @@ def handle_text(user_id, text):
 
             return
 
+        # =========================
+        # 封鎖
+        # =========================
+        if text == "封鎖":
+
+            result = supabase.table("chat_pairs") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .limit(1) \
+                .execute()
+
+            if not result.data:
+
+                send_message(user_id, "目前沒有聊天對象")
+                return
+
+            partner = result.data[0]["partner_id"]
+
+            check = supabase.table("blacklist") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .eq("blocked_user_id", partner) \
+                .execute()
+
+            if check.data:
+
+                send_message(user_id, "⚠️ 你已經封鎖過此人")
+                return
+
+            supabase.table("blacklist").insert({
+                "user_id": user_id,
+                "blocked_user_id": partner
+            }).execute()
+
+            supabase.table("chat_pairs") \
+                .delete() \
+                .eq("user_id", user_id) \
+                .execute()
+
+            supabase.table("chat_pairs") \
+                .delete() \
+                .eq("user_id", partner) \
+                .execute()
+
+            send_message(
+                user_id,
+                "🚫 已成功將對方封鎖，離開聊天室了"
+            )
+
+            try:
+                send_message(
+                    partner,
+                    "🥲 對方似乎不喜歡你，已經離開聊天室"
+                )
+            except:
+                pass
+
+            return
+
+        # =========================
+        # 黑名單列表
+        # =========================
+        if text == "黑名單":
+
+            result = supabase.table("blacklist") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .execute()
+
+            if not result.data:
+
+                send_message(user_id, "📭 你的黑名單目前是空的")
+                return
+
+            msg = "🚫 黑名單列表\n\n"
+
+            for i, row in enumerate(result.data, start=1):
+
+                blocked_id = row["blocked_user_id"]
+
+                short_id = blocked_id[-6:]
+
+                msg += f"{i}. 使用者 {short_id}\n"
+
+            send_message(user_id, msg)
+
+            return
+
+        # =========================
+        # 解除封鎖列表
+        # =========================
+        if text == "解除封鎖":
+
+            result = supabase.table("blacklist") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .execute()
+
+            if not result.data:
+
+                send_message(user_id, "📭 目前沒有封鎖任何人")
+                return
+
+            msg = "🔓 請輸入要解除封鎖的編號\n\n"
+
+            for i, row in enumerate(result.data, start=1):
+
+                blocked_id = row["blocked_user_id"]
+
+                short_id = blocked_id[-6:]
+
+                msg += f"{i}. 使用者 {short_id}\n"
+
+            msg += "\n例如：解除封鎖 1"
+
+            send_message(user_id, msg)
+
+            return
+
+        # =========================
+        # 執行解除封鎖
+        # =========================
+        if text.startswith("解除封鎖 "):
+
+            parts = text.split()
+
+            if len(parts) != 2:
+
+                send_message(
+                    user_id,
+                    "❌ 格式錯誤\n例如：解除封鎖 1"
+                )
+                return
+
+            try:
+                index = int(parts[1]) - 1
+            except:
+                send_message(user_id, "❌ 請輸入正確數字")
+                return
+
+            result = supabase.table("blacklist") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .execute()
+
+            if not result.data:
+
+                send_message(user_id, "📭 黑名單是空的")
+                return
+
+            if index < 0 or index >= len(result.data):
+
+                send_message(user_id, "❌ 找不到此編號")
+                return
+
+            blocked_user = result.data[index]["blocked_user_id"]
+
+            supabase.table("blacklist") \
+                .delete() \
+                .eq("user_id", user_id) \
+                .eq("blocked_user_id", blocked_user) \
+                .execute()
+
+            send_message(
+                user_id,
+                "✅ 已成功解除封鎖"
+            )
+
+            return
+
+        # =========================
+        # 聊天轉發
+        # =========================
         result = supabase.table("chat_pairs") \
             .select("*") \
             .eq("user_id", user_id) \
