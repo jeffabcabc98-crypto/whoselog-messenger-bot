@@ -55,7 +55,7 @@ def generate_nickname():
     return f"{emoji} {name}"
 
 # =========================
-# 發送訊息
+# 發送文字訊息
 # =========================
 def send_message(user_id, text):
 
@@ -82,6 +82,69 @@ def send_message(user_id, text):
     )
 
     print(response.text)
+
+# =========================
+# 發送附件
+# =========================
+def send_attachment(user_id, attachment):
+
+    url = "https://graph.facebook.com/v19.0/me/messages"
+
+    headers = {
+        "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "recipient": {
+            "id": user_id
+        },
+        "message": {
+            "attachment": attachment
+        }
+    }
+
+    response = requests.post(
+        url,
+        headers=headers,
+        json=data
+    )
+
+    print(response.text)
+
+# =========================
+# 處理附件
+# =========================
+def handle_attachment(user_id, attachments):
+
+    result = supabase.table("chat_pairs") \
+        .select("*") \
+        .eq("user_id", user_id) \
+        .limit(1) \
+        .execute()
+
+    if not result.data:
+
+        send_message(
+            user_id,
+            "輸入「開始」開始匿名聊天"
+        )
+        return
+
+    partner = result.data[0]["partner_id"]
+
+    for attachment in attachments:
+
+        try:
+
+            send_attachment(
+                partner,
+                attachment
+            )
+
+        except Exception as e:
+
+            print(e)
 
 # =========================
 # Webhook 驗證
@@ -115,13 +178,152 @@ def webhook():
 
                 if "message" in messaging_event:
 
-                    if "text" in messaging_event["message"]:
+                    message = messaging_event["message"]
 
-                        text = messaging_event["message"]["text"]
+                    # =========================
+                    # 文字
+                    # =========================
+                    if "text" in message:
+
+                        text = message["text"]
 
                         handle_text(sender_id, text)
 
+                    # =========================
+                    # 附件
+                    # =========================
+                    if "attachments" in message:
+
+                        handle_attachment(
+                            sender_id,
+                            message["attachments"]
+                        )
+
     return "ok", 200
+
+# =========================
+# 執行開始配對
+# =========================
+def start_match(user_id):
+
+    check_waiting = supabase.table("waiting_users") \
+        .select("*") \
+        .eq("user_id", user_id) \
+        .execute()
+
+    if check_waiting.data:
+
+        send_message(user_id, "⏳ 你已經在等待配對中了")
+        return
+
+    check_chat = supabase.table("chat_pairs") \
+        .select("*") \
+        .eq("user_id", user_id) \
+        .execute()
+
+    if check_chat.data:
+
+        send_message(user_id, "💬 你目前已經在聊天中了")
+        return
+
+    waiting_users = supabase.table("waiting_users") \
+        .select("*") \
+        .neq("user_id", user_id) \
+        .execute()
+
+    partner = None
+
+    for row in waiting_users.data:
+
+        target = row["user_id"]
+
+        check1 = supabase.table("blacklist") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .eq("blocked_user_id", target) \
+            .execute()
+
+        check2 = supabase.table("blacklist") \
+            .select("*") \
+            .eq("user_id", target) \
+            .eq("blocked_user_id", user_id) \
+            .execute()
+
+        if check1.data or check2.data:
+            continue
+
+        partner = target
+        break
+
+    if partner:
+
+        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+
+        recent = supabase.table("recent_pairs") \
+            .select("*") \
+            .or_(
+                f"and(user1.eq.{user_id},user2.eq.{partner}),"
+                f"and(user1.eq.{partner},user2.eq.{user_id})"
+            ) \
+            .gte("created_at", one_hour_ago.isoformat()) \
+            .execute()
+
+        if recent.data:
+
+            send_message(
+                user_id,
+                "⏳ 正在尋找新的聊天對象..."
+            )
+
+            return
+
+        supabase.table("waiting_users") \
+            .delete() \
+            .eq("user_id", partner) \
+            .execute()
+
+        nickname1 = generate_nickname()
+        nickname2 = generate_nickname()
+
+        supabase.table("chat_pairs").insert([
+            {
+                "user_id": user_id,
+                "partner_id": partner,
+                "nickname": nickname1,
+                "partner_nickname": nickname2
+            },
+            {
+                "user_id": partner,
+                "partner_id": user_id,
+                "nickname": nickname2,
+                "partner_nickname": nickname1
+            }
+        ]).execute()
+
+        supabase.table("recent_pairs").insert({
+            "user1": user_id,
+            "user2": partner
+        }).execute()
+
+        send_message(
+            user_id,
+            f"✅ 配對成功！\n你的暱稱：{nickname1}"
+        )
+
+        send_message(
+            partner,
+            f"✅ 配對成功！\n你的暱稱：{nickname2}"
+        )
+
+    else:
+
+        supabase.table("waiting_users") \
+            .upsert({
+                "user_id": user_id
+            }) \
+            .execute()
+
+        send_message(user_id, "⏳ 等待配對中...")
 
 # =========================
 # 文字處理
@@ -133,133 +335,58 @@ def handle_text(user_id, text):
     try:
 
         # =========================
-        # 開始配對
+        # 開始
         # =========================
         if text == "開始":
 
-            check_waiting = supabase.table("waiting_users") \
-                .select("*") \
-                .eq("user_id", user_id) \
-                .execute()
-
-            if check_waiting.data:
-
-                send_message(user_id, "⏳ 你已經在等待配對中了")
-                return
-
-            check_chat = supabase.table("chat_pairs") \
-                .select("*") \
-                .eq("user_id", user_id) \
-                .execute()
-
-            if check_chat.data:
-
-                send_message(user_id, "💬 你目前已經在聊天中了")
-                return
-
-            waiting_users = supabase.table("waiting_users") \
-                .select("*") \
-                .neq("user_id", user_id) \
-                .execute()
-
-            partner = None
-
-            for row in waiting_users.data:
-
-                target = row["user_id"]
-
-                check1 = supabase.table("blacklist") \
-                    .select("*") \
-                    .eq("user_id", user_id) \
-                    .eq("blocked_user_id", target) \
-                    .execute()
-
-                check2 = supabase.table("blacklist") \
-                    .select("*") \
-                    .eq("user_id", target) \
-                    .eq("blocked_user_id", user_id) \
-                    .execute()
-
-                if check1.data or check2.data:
-                    continue
-
-                partner = target
-                break
-
-            if partner:
-
-                one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
-
-                recent = supabase.table("recent_pairs") \
-                    .select("*") \
-                    .or_(
-                        f"and(user1.eq.{user_id},user2.eq.{partner}),"
-                        f"and(user1.eq.{partner},user2.eq.{user_id})"
-                    ) \
-                    .gte("created_at", one_hour_ago.isoformat()) \
-                    .execute()
-
-                if recent.data:
-
-                    send_message(
-                        user_id,
-                        "⏳ 正在尋找新的聊天對象..."
-                    )
-
-                    return
-
-                supabase.table("waiting_users") \
-                    .delete() \
-                    .eq("user_id", partner) \
-                    .execute()
-
-                nickname1 = generate_nickname()
-                nickname2 = generate_nickname()
-
-                supabase.table("chat_pairs").insert([
-                    {
-                        "user_id": user_id,
-                        "partner_id": partner,
-                        "nickname": nickname1,
-                        "partner_nickname": nickname2
-                    },
-                    {
-                        "user_id": partner,
-                        "partner_id": user_id,
-                        "nickname": nickname2,
-                        "partner_nickname": nickname1
-                    }
-                ]).execute()
-
-                supabase.table("recent_pairs").insert({
-                    "user1": user_id,
-                    "user2": partner
-                }).execute()
-
-                send_message(
-                    user_id,
-                    f"✅ 配對成功！\n你的暱稱：{nickname1}"
-                )
-
-                send_message(
-                    partner,
-                    f"✅ 配對成功！\n你的暱稱：{nickname2}"
-                )
-
-            else:
-
-                supabase.table("waiting_users") \
-                    .upsert({
-                        "user_id": user_id
-                    }) \
-                    .execute()
-
-                send_message(user_id, "⏳ 等待配對中...")
+            start_match(user_id)
 
             return
 
         # =========================
-        # 離開聊天室
+        # 下一位
+        # =========================
+        if text == "下一位":
+
+            result = supabase.table("chat_pairs") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .limit(1) \
+                .execute()
+
+            if result.data:
+
+                partner = result.data[0]["partner_id"]
+
+                supabase.table("chat_pairs") \
+                    .delete() \
+                    .eq("user_id", user_id) \
+                    .execute()
+
+                supabase.table("chat_pairs") \
+                    .delete() \
+                    .eq("user_id", partner) \
+                    .execute()
+
+                try:
+                    send_message(
+                        partner,
+                        "⚠️ 對方已離開聊天"
+                    )
+                except:
+                    pass
+
+            send_message(
+                user_id,
+                "🔄 正在幫你尋找下一位..."
+            )
+
+            start_match(user_id)
+
+            return
+
+        # =========================
+        # 離開
         # =========================
         if text == "離開":
 
@@ -287,11 +414,17 @@ def handle_text(user_id, text):
                 .execute()
 
             try:
-                send_message(partner, "⚠️ 對方已離開聊天")
+                send_message(
+                    partner,
+                    "⚠️ 對方已離開聊天"
+                )
             except:
                 pass
 
-            send_message(user_id, "✅ 你已離開聊天")
+            send_message(
+                user_id,
+                "✅ 你已離開聊天"
+            )
 
             return
 
@@ -321,7 +454,10 @@ def handle_text(user_id, text):
 
             if check.data:
 
-                send_message(user_id, "⚠️ 你已經封鎖過此人")
+                send_message(
+                    user_id,
+                    "⚠️ 你已經封鎖過此人"
+                )
                 return
 
             supabase.table("blacklist").insert({
@@ -355,7 +491,7 @@ def handle_text(user_id, text):
             return
 
         # =========================
-        # 黑名單列表
+        # 黑名單
         # =========================
         if text == "黑名單":
 
@@ -366,7 +502,10 @@ def handle_text(user_id, text):
 
             if not result.data:
 
-                send_message(user_id, "📭 你的黑名單目前是空的")
+                send_message(
+                    user_id,
+                    "📭 你的黑名單目前是空的"
+                )
                 return
 
             msg = "🚫 黑名單列表\n\n"
@@ -395,7 +534,10 @@ def handle_text(user_id, text):
 
             if not result.data:
 
-                send_message(user_id, "📭 目前沒有封鎖任何人")
+                send_message(
+                    user_id,
+                    "📭 目前沒有封鎖任何人"
+                )
                 return
 
             msg = "🔓 請輸入要解除封鎖的編號\n\n"
@@ -432,7 +574,10 @@ def handle_text(user_id, text):
             try:
                 index = int(parts[1]) - 1
             except:
-                send_message(user_id, "❌ 請輸入正確數字")
+                send_message(
+                    user_id,
+                    "❌ 請輸入正確數字"
+                )
                 return
 
             result = supabase.table("blacklist") \
@@ -442,12 +587,18 @@ def handle_text(user_id, text):
 
             if not result.data:
 
-                send_message(user_id, "📭 黑名單是空的")
+                send_message(
+                    user_id,
+                    "📭 黑名單是空的"
+                )
                 return
 
             if index < 0 or index >= len(result.data):
 
-                send_message(user_id, "❌ 找不到此編號")
+                send_message(
+                    user_id,
+                    "❌ 找不到此編號"
+                )
                 return
 
             blocked_user = result.data[index]["blocked_user_id"]
