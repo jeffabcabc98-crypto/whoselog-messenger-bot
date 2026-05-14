@@ -137,6 +137,14 @@ def handle_attachment(user_id, attachments):
 
         try:
 
+            # 移除 Messenger sticker_id
+            if "payload" in attachment:
+
+                attachment["payload"].pop(
+                    "sticker_id",
+                    None
+                )
+
             send_attachment(
                 partner,
                 attachment
@@ -144,6 +152,7 @@ def handle_attachment(user_id, attachments):
 
         except Exception as e:
 
+            print("附件錯誤")
             print(e)
 
 # =========================
@@ -202,7 +211,7 @@ def webhook():
     return "ok", 200
 
 # =========================
-# 執行開始配對
+# 開始配對
 # =========================
 def start_match(user_id):
 
@@ -213,7 +222,10 @@ def start_match(user_id):
 
     if check_waiting.data:
 
-        send_message(user_id, "⏳ 你已經在等待配對中了")
+        send_message(
+            user_id,
+            "⏳ 你已經在等待配對中了"
+        )
         return
 
     check_chat = supabase.table("chat_pairs") \
@@ -223,7 +235,10 @@ def start_match(user_id):
 
     if check_chat.data:
 
-        send_message(user_id, "💬 你目前已經在聊天中了")
+        send_message(
+            user_id,
+            "💬 你目前已經在聊天中了"
+        )
         return
 
     waiting_users = supabase.table("waiting_users") \
@@ -257,7 +272,9 @@ def start_match(user_id):
 
     if partner:
 
-        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+        one_hour_ago = datetime.now(
+            timezone.utc
+        ) - timedelta(hours=1)
 
         recent = supabase.table("recent_pairs") \
             .select("*") \
@@ -265,7 +282,10 @@ def start_match(user_id):
                 f"and(user1.eq.{user_id},user2.eq.{partner}),"
                 f"and(user1.eq.{partner},user2.eq.{user_id})"
             ) \
-            .gte("created_at", one_hour_ago.isoformat()) \
+            .gte(
+                "created_at",
+                one_hour_ago.isoformat()
+            ) \
             .execute()
 
         if recent.data:
@@ -323,7 +343,10 @@ def start_match(user_id):
             }) \
             .execute()
 
-        send_message(user_id, "⏳ 等待配對中...")
+        send_message(
+            user_id,
+            "⏳ 等待配對中..."
+        )
 
 # =========================
 # 文字處理
@@ -398,7 +421,10 @@ def handle_text(user_id, text):
 
             if not result.data:
 
-                send_message(user_id, "目前沒有聊天對象")
+                send_message(
+                    user_id,
+                    "目前沒有聊天對象"
+                )
                 return
 
             partner = result.data[0]["partner_id"]
@@ -441,7 +467,10 @@ def handle_text(user_id, text):
 
             if not result.data:
 
-                send_message(user_id, "目前沒有聊天對象")
+                send_message(
+                    user_id,
+                    "目前沒有聊天對象"
+                )
                 return
 
             partner = result.data[0]["partner_id"]
@@ -510,7 +539,10 @@ def handle_text(user_id, text):
 
             msg = "🚫 黑名單列表\n\n"
 
-            for i, row in enumerate(result.data, start=1):
+            for i, row in enumerate(
+                result.data,
+                start=1
+            ):
 
                 blocked_id = row["blocked_user_id"]
 
@@ -542,7 +574,10 @@ def handle_text(user_id, text):
 
             msg = "🔓 請輸入要解除封鎖的編號\n\n"
 
-            for i, row in enumerate(result.data, start=1):
+            for i, row in enumerate(
+                result.data,
+                start=1
+            ):
 
                 blocked_id = row["blocked_user_id"]
 
@@ -601,12 +636,17 @@ def handle_text(user_id, text):
                 )
                 return
 
-            blocked_user = result.data[index]["blocked_user_id"]
+            blocked_user = result.data[index][
+                "blocked_user_id"
+            ]
 
             supabase.table("blacklist") \
                 .delete() \
                 .eq("user_id", user_id) \
-                .eq("blocked_user_id", blocked_user) \
+                .eq(
+                    "blocked_user_id",
+                    blocked_user
+                ) \
                 .execute()
 
             send_message(
