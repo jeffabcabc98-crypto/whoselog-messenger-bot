@@ -2,29 +2,21 @@ from flask import Flask, request
 import os
 import requests
 import random
-
 from datetime import datetime, timedelta, timezone
-
 from supabase import create_client
 
 app = Flask(__name__)
 
-# =========================
-# ENV
-# =========================
 PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# =========================
-# Supabase
-# =========================
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # =========================
-# 防洗版檢查（Supabase版）
+# 防洗版
 # =========================
 def check_rate_limit(user_id, msg_type):
 
@@ -51,7 +43,6 @@ def check_rate_limit(user_id, msg_type):
         .execute()
 
     if len(result.data) >= max_count:
-
         return False
 
     supabase.table("rate_limits").insert({
@@ -62,98 +53,77 @@ def check_rate_limit(user_id, msg_type):
     return True
 
 # =========================
-# 隨機暱稱
+# 暱稱
 # =========================
-nickname_1 = [
-    "星", "月", "白", "夜", "風",
-    "雨", "雪", "海", "雲", "光",
-    "影", "花", "羽", "夢", "霧"
-]
-
-nickname_2 = [
-    "空", "辰", "羽", "夜", "風",
-    "語", "海", "光", "夢", "森",
-    "月", "雪", "櫻", "川", "歌"
-]
-
-emoji_list = [
-    "🌙", "⭐", "🍀", "🌸", "☁️",
-    "🔥", "🦋", "🌊", "❄️", "✨"
-]
+nickname_1 = ["星","月","白","夜","風","雨","雪","海","雲","光"]
+nickname_2 = ["空","辰","羽","夜","風","語","海","夢","森","歌"]
+emoji_list = ["🌙","⭐","🍀","🌸","☁️","🔥","🦋","🌊","❄️","✨"]
 
 def generate_nickname():
 
-    name = (
-        random.choice(nickname_1) +
-        random.choice(nickname_2)
-    )
-
-    emoji = random.choice(emoji_list)
-
-    return f"{emoji} {name}"
+    return f"{random.choice(emoji_list)} {random.choice(nickname_1)}{random.choice(nickname_2)}"
 
 # =========================
-# 發送文字訊息
+# FB 名稱
+# =========================
+def get_user_name(user_id):
+
+    try:
+
+        response = requests.get(
+            f"https://graph.facebook.com/{user_id}",
+            params={
+                "fields": "name",
+                "access_token": PAGE_ACCESS_TOKEN
+            },
+            timeout=10
+        )
+
+        data = response.json()
+
+        return data.get("name", "未知使用者")
+
+    except:
+        return "未知使用者"
+
+# =========================
+# 發送文字
 # =========================
 def send_message(user_id, text):
 
-    url = "https://graph.facebook.com/v19.0/me/messages"
-
-    headers = {
-        "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "recipient": {
-            "id": user_id
+    requests.post(
+        "https://graph.facebook.com/v19.0/me/messages",
+        headers={
+            "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
         },
-        "message": {
-            "text": text
-        }
-    }
-
-    response = requests.post(
-        url,
-        headers=headers,
-        json=data,
+        json={
+            "recipient": {"id": user_id},
+            "message": {"text": text}
+        },
         timeout=15
     )
-
-    print(response.text)
 
 # =========================
 # 發送附件
 # =========================
 def send_attachment(user_id, attachment):
 
-    url = "https://graph.facebook.com/v19.0/me/messages"
-
-    headers = {
-        "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "recipient": {
-            "id": user_id
+    requests.post(
+        "https://graph.facebook.com/v19.0/me/messages",
+        headers={
+            "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
         },
-        "message": {
-            "attachment": attachment
-        }
-    }
-
-    response = requests.post(
-        url,
-        headers=headers,
-        json=data,
+        json={
+            "recipient": {"id": user_id},
+            "message": {"attachment": attachment}
+        },
         timeout=30
     )
 
-    print(response.text)
-
 # =========================
-# 處理附件
+# 附件處理
 # =========================
 def handle_attachment(user_id, attachments):
 
@@ -165,10 +135,7 @@ def handle_attachment(user_id, attachments):
 
     if not result.data:
 
-        send_message(
-            user_id,
-            "輸入「開始」開始匿名聊天"
-        )
+        send_message(user_id, "輸入「開始」開始匿名聊天")
         return
 
     partner = result.data[0]["partner_id"]
@@ -177,83 +144,58 @@ def handle_attachment(user_id, attachments):
 
         try:
 
-            attachment_type = attachment.get(
-                "type",
-                ""
-            )
-
-            payload = attachment.get(
-                "payload",
-                {}
-            )
-
-            url = payload.get(
-                "url",
-                ""
-            )
+            attachment_type = attachment.get("type", "")
+            payload = attachment.get("payload", {})
+            url = payload.get("url", "")
 
             limit_type = None
 
-            # GIF 判斷
-            if (
-                attachment_type == "image"
-                and (
-                    ".gif" in url.lower()
-                    or "gif" in url.lower()
-                )
+            if attachment_type == "image" and (
+                ".gif" in url.lower()
+                or "gif" in url.lower()
             ):
-
                 limit_type = "gif"
 
-            # 圖片
             elif attachment_type == "image":
-
                 limit_type = "image"
 
-            # 影片
             elif attachment_type == "video":
-
                 limit_type = "video"
 
-            # 語音
             elif attachment_type == "audio":
-
                 limit_type = "audio"
 
-            # 檢查限制
-            if limit_type:
+            elif attachment_type == "file":
 
-                allowed = check_rate_limit(
+                send_message(
                     user_id,
-                    limit_type
+                    "⚠️ 目前不支援檔案傳送"
                 )
 
-                if not allowed:
+                continue
 
-                    limit_msg = {
-                        "image":
-                        "⚠️ 圖片傳送過快",
+            if limit_type:
 
-                        "gif":
-                        "⚠️ GIF 傳送過快",
+                if not check_rate_limit(
+                    user_id,
+                    limit_type
+                ):
 
-                        "video":
-                        "⚠️ 影片傳送過快",
-
-                        "audio":
-                        "⚠️ 語音傳送過快"
+                    msgs = {
+                        "image": "⚠️ 圖片傳送過快",
+                        "gif": "⚠️ GIF 傳送過快",
+                        "video": "⚠️ 影片傳送過快",
+                        "audio": "⚠️ 語音傳送過快"
                     }
 
                     send_message(
                         user_id,
-                        limit_msg[limit_type]
+                        msgs[limit_type]
                     )
 
                     continue
 
-            # 移除 Messenger sticker_id
             if "payload" in attachment:
-
                 attachment["payload"].pop(
                     "sticker_id",
                     None
@@ -265,87 +207,19 @@ def handle_attachment(user_id, attachments):
             )
 
         except Exception as e:
-
-            print("附件錯誤")
             print(e)
 
 # =========================
-# Webhook 驗證
-# =========================
-@app.route("/webhook", methods=["GET"])
-def verify():
-
-    token = request.args.get("hub.verify_token")
-    challenge = request.args.get("hub.challenge")
-
-    if token == VERIFY_TOKEN:
-        return challenge
-
-    return "驗證失敗"
-
-# =========================
-# Webhook
-# =========================
-@app.route("/webhook", methods=["POST"])
-def webhook():
-
-    data = request.json
-
-    if data.get("object") == "page":
-
-        for entry in data["entry"]:
-
-            for messaging_event in entry["messaging"]:
-
-                sender_id = messaging_event["sender"]["id"]
-
-                if "message" in messaging_event:
-
-                    message = messaging_event["message"]
-
-                    # 文字
-                    if "text" in message:
-
-                        text = message["text"]
-
-                        if not check_rate_limit(
-                            sender_id,
-                            "text"
-                        ):
-
-                            send_message(
-                                sender_id,
-                                "⚠️ 傳送過快，請稍後再試"
-                            )
-
-                        else:
-
-                            handle_text(
-                                sender_id,
-                                text
-                            )
-
-                    # 附件
-                    if "attachments" in message:
-
-                        handle_attachment(
-                            sender_id,
-                            message["attachments"]
-                        )
-
-    return "ok", 200
-
-# =========================
-# 開始配對
+# 配對
 # =========================
 def start_match(user_id):
 
-    check_waiting = supabase.table("waiting_users") \
+    waiting = supabase.table("waiting_users") \
         .select("*") \
         .eq("user_id", user_id) \
         .execute()
 
-    if check_waiting.data:
+    if waiting.data:
 
         send_message(
             user_id,
@@ -353,12 +227,12 @@ def start_match(user_id):
         )
         return
 
-    check_chat = supabase.table("chat_pairs") \
+    chatting = supabase.table("chat_pairs") \
         .select("*") \
         .eq("user_id", user_id) \
         .execute()
 
-    if check_chat.data:
+    if chatting.data:
 
         send_message(
             user_id,
@@ -377,19 +251,19 @@ def start_match(user_id):
 
         target = row["user_id"]
 
-        check1 = supabase.table("blacklist") \
+        black1 = supabase.table("blacklist") \
             .select("*") \
             .eq("user_id", user_id) \
             .eq("blocked_user_id", target) \
             .execute()
 
-        check2 = supabase.table("blacklist") \
+        black2 = supabase.table("blacklist") \
             .select("*") \
             .eq("user_id", target) \
             .eq("blocked_user_id", user_id) \
             .execute()
 
-        if check1.data or check2.data:
+        if black1.data or black2.data:
             continue
 
         one_hour_ago = datetime.now(
@@ -399,8 +273,7 @@ def start_match(user_id):
         recent = supabase.table("recent_pairs") \
             .select("*") \
             .or_(
-                f"and(user1.eq.{user_id},user2.eq.{target}),"
-                f"and(user1.eq.{target},user2.eq.{user_id})"
+                f"and(user1.eq.{user_id},user2.eq.{target}),and(user1.eq.{target},user2.eq.{user_id})"
             ) \
             .gte(
                 "created_at",
@@ -456,18 +329,9 @@ def start_match(user_id):
 
     else:
 
-        existing = supabase.table("waiting_users") \
-            .select("*") \
-            .eq("user_id", user_id) \
-            .execute()
-
-        if not existing.data:
-
-            supabase.table("waiting_users") \
-                .insert({
-                    "user_id": user_id
-                }) \
-                .execute()
+        supabase.table("waiting_users").insert({
+            "user_id": user_id
+        }).execute()
 
         send_message(
             user_id,
@@ -483,9 +347,6 @@ def handle_text(user_id, text):
 
     try:
 
-        # =========================
-        # 檢舉後確認
-        # =========================
         pending = supabase.table("pending_actions") \
             .select("*") \
             .eq("user_id", user_id) \
@@ -496,6 +357,66 @@ def handle_text(user_id, text):
 
             action = pending.data[0]["action"]
 
+            # 檢舉原因
+            if action == "report_reason":
+
+                target_user = pending.data[0]["target_user_id"]
+
+                if text == "返回":
+
+                    supabase.table("pending_actions") \
+                        .delete() \
+                        .eq("user_id", user_id) \
+                        .execute()
+
+                    send_message(
+                        user_id,
+                        "✅ 已取消檢舉"
+                    )
+
+                    return
+
+                reason = text.strip()
+
+                if not reason:
+
+                    send_message(
+                        user_id,
+                        "⚠️ 請輸入檢舉原因"
+                    )
+
+                    return
+
+                reporter_name = get_user_name(user_id)
+                reported_name = get_user_name(target_user)
+
+                supabase.table("reports").insert({
+                    "reporter_id": user_id,
+                    "reporter_name": reporter_name,
+                    "reported_user_id": target_user,
+                    "reported_name": reported_name,
+                    "reason": reason
+                }).execute()
+
+                supabase.table("pending_actions") \
+                    .delete() \
+                    .eq("user_id", user_id) \
+                    .execute()
+
+                supabase.table("pending_actions").insert({
+                    "user_id": user_id,
+                    "action": "report_confirm",
+                    "target_user_id": target_user
+                }).execute()
+
+                send_message(
+                    user_id,
+                    "✅ 已送出檢舉\n\n是否要封鎖並離開聊天室？\n請輸入：是 或 否"
+                )
+
+                return
+
+            # 檢舉確認
             if action == "report_confirm":
 
                 target_user = pending.data[0]["target_user_id"]
@@ -507,21 +428,10 @@ def handle_text(user_id, text):
                         .eq("user_id", user_id) \
                         .execute()
 
-                    check = supabase.table("blacklist") \
-                        .select("*") \
-                        .eq("user_id", user_id) \
-                        .eq(
-                            "blocked_user_id",
-                            target_user
-                        ) \
-                        .execute()
-
-                    if not check.data:
-
-                        supabase.table("blacklist").insert({
-                            "user_id": user_id,
-                            "blocked_user_id": target_user
-                        }).execute()
+                    supabase.table("blacklist").insert({
+                        "user_id": user_id,
+                        "blocked_user_id": target_user
+                    }).execute()
 
                     supabase.table("chat_pairs") \
                         .delete() \
@@ -571,9 +481,7 @@ def handle_text(user_id, text):
 
         # 開始
         if text == "開始":
-
             start_match(user_id)
-
             return
 
         # 取消配對
@@ -601,23 +509,6 @@ def handle_text(user_id, text):
             send_message(
                 user_id,
                 "✅ 已取消配對"
-            )
-
-            return
-
-        # 解除配對限制
-        if text == "解除配對限制":
-
-            supabase.table("recent_pairs") \
-                .delete() \
-                .or_(
-                    f"user1.eq.{user_id},user2.eq.{user_id}"
-                ) \
-                .execute()
-
-            send_message(
-                user_id,
-                "✅ 已解除配對限制"
             )
 
             return
@@ -664,7 +555,6 @@ def handle_text(user_id, text):
             )
 
             start_match(user_id)
-
             return
 
         # 離開
@@ -682,6 +572,7 @@ def handle_text(user_id, text):
                     user_id,
                     "目前沒有聊天對象"
                 )
+
                 return
 
             partner = result.data[0]["partner_id"]
@@ -695,14 +586,6 @@ def handle_text(user_id, text):
                 .delete() \
                 .eq("user_id", partner) \
                 .execute()
-
-            try:
-                send_message(
-                    partner,
-                    "⚠️ 對方已離開聊天"
-                )
-            except:
-                pass
 
             send_message(
                 user_id,
@@ -726,6 +609,7 @@ def handle_text(user_id, text):
                     user_id,
                     "目前沒有聊天對象"
                 )
+
                 return
 
             partner = result.data[0]["partner_id"]
@@ -742,6 +626,7 @@ def handle_text(user_id, text):
                     user_id,
                     "⚠️ 你已經封鎖過此人"
                 )
+
                 return
 
             supabase.table("blacklist").insert({
@@ -788,20 +673,14 @@ def handle_text(user_id, text):
                     user_id,
                     "📭 黑名單目前是空的"
                 )
+
                 return
 
             msg = "🚫 黑名單列表\n\n"
 
-            for i, row in enumerate(
-                result.data,
-                start=1
-            ):
+            for i, row in enumerate(result.data, start=1):
 
-                blocked_id = row["blocked_user_id"]
-
-                short_id = blocked_id[-6:]
-
-                msg += f"{i}. 使用者 {short_id}\n"
+                msg += f"{i}. 使用者 {row['blocked_user_id'][-6:]}\n"
 
             send_message(user_id, msg)
 
@@ -821,20 +700,14 @@ def handle_text(user_id, text):
                     user_id,
                     "📭 目前沒有封鎖任何人"
                 )
+
                 return
 
             msg = "🔓 請輸入要解除封鎖的編號\n\n"
 
-            for i, row in enumerate(
-                result.data,
-                start=1
-            ):
+            for i, row in enumerate(result.data, start=1):
 
-                blocked_id = row["blocked_user_id"]
-
-                short_id = blocked_id[-6:]
-
-                msg += f"{i}. 使用者 {short_id}\n"
+                msg += f"{i}. 使用者 {row['blocked_user_id'][-6:]}\n"
 
             msg += "\n例如：解除封鎖 1"
 
@@ -845,23 +718,10 @@ def handle_text(user_id, text):
         # 執行解除封鎖
         if text.startswith("解除封鎖 "):
 
-            parts = text.split()
-
-            if len(parts) != 2:
-
-                send_message(
-                    user_id,
-                    "❌ 格式錯誤"
-                )
-                return
-
             try:
-                index = int(parts[1]) - 1
+                index = int(text.split()[1]) - 1
             except:
-                send_message(
-                    user_id,
-                    "❌ 請輸入正確數字"
-                )
+                send_message(user_id, "❌ 格式錯誤")
                 return
 
             result = supabase.table("blacklist") \
@@ -869,38 +729,37 @@ def handle_text(user_id, text):
                 .eq("user_id", user_id) \
                 .execute()
 
-            if not result.data:
-
-                send_message(
-                    user_id,
-                    "📭 黑名單是空的"
-                )
-                return
-
             if index < 0 or index >= len(result.data):
 
-                send_message(
-                    user_id,
-                    "❌ 找不到此編號"
-                )
+                send_message(user_id, "❌ 找不到此編號")
                 return
 
-            blocked_user = result.data[index][
-                "blocked_user_id"
-            ]
+            blocked_user = result.data[index]["blocked_user_id"]
 
             supabase.table("blacklist") \
                 .delete() \
                 .eq("user_id", user_id) \
-                .eq(
-                    "blocked_user_id",
-                    blocked_user
-                ) \
+                .eq("blocked_user_id", blocked_user) \
                 .execute()
 
             send_message(
                 user_id,
                 "✅ 已成功解除封鎖"
+            )
+
+            return
+
+        # 解除配對限制
+        if text == "解除配對限制":
+
+            supabase.table("recent_pairs") \
+                .delete() \
+                .or_(f"user1.eq.{user_id},user2.eq.{user_id}") \
+                .execute()
+
+            send_message(
+                user_id,
+                "✅ 已解除配對限制"
             )
 
             return
@@ -925,11 +784,6 @@ def handle_text(user_id, text):
 
             partner = result.data[0]["partner_id"]
 
-            supabase.table("reports").insert({
-                "reporter_id": user_id,
-                "reported_user_id": partner
-            }).execute()
-
             supabase.table("pending_actions") \
                 .delete() \
                 .eq("user_id", user_id) \
@@ -937,13 +791,13 @@ def handle_text(user_id, text):
 
             supabase.table("pending_actions").insert({
                 "user_id": user_id,
-                "action": "report_confirm",
+                "action": "report_reason",
                 "target_user_id": partner
             }).execute()
 
             send_message(
                 user_id,
-                "🚨 已成功檢舉對方\n\n是否要封鎖並離開聊天室？\n請輸入：是 或 否"
+                "🚨 請輸入檢舉原因\n\n如果不想檢舉了請輸入：返回"
             )
 
             return
@@ -973,9 +827,71 @@ def handle_text(user_id, text):
             )
 
     except Exception as e:
-
-        print("錯誤")
         print(e)
+
+# =========================
+# Webhook 驗證
+# =========================
+@app.route("/webhook", methods=["GET"])
+def verify():
+
+    token = request.args.get("hub.verify_token")
+    challenge = request.args.get("hub.challenge")
+
+    if token == VERIFY_TOKEN:
+        return challenge
+
+    return "驗證失敗"
+
+# =========================
+# Webhook
+# =========================
+@app.route("/webhook", methods=["POST"])
+def webhook():
+
+    data = request.json
+
+    if data.get("object") == "page":
+
+        for entry in data["entry"]:
+
+            for messaging_event in entry["messaging"]:
+
+                sender_id = messaging_event["sender"]["id"]
+
+                if "message" in messaging_event:
+
+                    message = messaging_event["message"]
+
+                    if "text" in message:
+
+                        text = message["text"]
+
+                        if not check_rate_limit(
+                            sender_id,
+                            "text"
+                        ):
+
+                            send_message(
+                                sender_id,
+                                "⚠️ 傳送過快，請稍後再試"
+                            )
+
+                        else:
+
+                            handle_text(
+                                sender_id,
+                                text
+                            )
+
+                    if "attachments" in message:
+
+                        handle_attachment(
+                            sender_id,
+                            message["attachments"]
+                        )
+
+    return "ok", 200
 
 if __name__ == "__main__":
 
