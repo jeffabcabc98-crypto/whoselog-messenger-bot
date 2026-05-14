@@ -24,46 +24,40 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # =========================
-# 防洗版
-# =========================
-rate_limits = {}
-
-# =========================
-# 防洗版檢查
+# 防洗版檢查（Supabase版）
 # =========================
 def check_rate_limit(user_id, msg_type):
-
-    now = datetime.now().timestamp()
-
-    if user_id not in rate_limits:
-
-        rate_limits[user_id] = {
-            "text": [],
-            "image": [],
-            "gif": [],
-            "video": []
-        }
 
     limits = {
         "text": (10, 5),
         "image": (60, 3),
         "gif": (60, 2),
-        "video": (60, 1)
+        "video": (60, 1),
+        "audio": (60, 3)
     }
 
     seconds, max_count = limits[msg_type]
 
-    timestamps = rate_limits[user_id][msg_type]
+    since_time = (
+        datetime.now(timezone.utc)
+        - timedelta(seconds=seconds)
+    ).isoformat()
 
-    timestamps[:] = [
-        t for t in timestamps
-        if now - t < seconds
-    ]
+    result = supabase.table("rate_limits") \
+        .select("*") \
+        .eq("user_id", user_id) \
+        .eq("msg_type", msg_type) \
+        .gte("created_at", since_time) \
+        .execute()
 
-    if len(timestamps) >= max_count:
+    if len(result.data) >= max_count:
+
         return False
 
-    timestamps.append(now)
+    supabase.table("rate_limits").insert({
+        "user_id": user_id,
+        "msg_type": msg_type
+    }).execute()
 
     return True
 
@@ -221,6 +215,11 @@ def handle_attachment(user_id, attachments):
 
                 limit_type = "video"
 
+            # 語音
+            elif attachment_type == "audio":
+
+                limit_type = "audio"
+
             # 檢查限制
             if limit_type:
 
@@ -239,7 +238,10 @@ def handle_attachment(user_id, attachments):
                         "⚠️ GIF 傳送過快",
 
                         "video":
-                        "⚠️ 影片傳送過快"
+                        "⚠️ 影片傳送過快",
+
+                        "audio":
+                        "⚠️ 語音傳送過快"
                     }
 
                     send_message(
