@@ -24,6 +24,51 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # =========================
+# 防洗版
+# =========================
+rate_limits = {}
+
+# =========================
+# 防洗版檢查
+# =========================
+def check_rate_limit(user_id, msg_type):
+
+    now = datetime.now().timestamp()
+
+    if user_id not in rate_limits:
+
+        rate_limits[user_id] = {
+            "text": [],
+            "image": [],
+            "gif": [],
+            "video": []
+        }
+
+    limits = {
+        "text": (10, 5),
+        "image": (60, 3),
+        "gif": (60, 2),
+        "video": (60, 1)
+    }
+
+    seconds, max_count = limits[msg_type]
+
+    timestamps = rate_limits[user_id][msg_type]
+
+    timestamps[:] = [
+        t for t in timestamps
+        if now - t < seconds
+    ]
+
+    if len(timestamps) >= max_count:
+        return False
+
+    timestamps.append(now)
+
+    return True
+
+
+# =========================
 # 隨機暱稱
 # =========================
 nickname_1 = [
@@ -137,6 +182,69 @@ def handle_attachment(user_id, attachments):
 
         try:
 
+            attachment_type = attachment.get(
+                "type",
+                ""
+            )
+
+            payload = attachment.get(
+                "payload",
+                {}
+            )
+
+            url = payload.get(
+                "url",
+                ""
+            )
+
+            limit_type = None
+
+            # GIF
+            if (
+                attachment_type == "image"
+                and ".gif" in url.lower()
+            ):
+
+                limit_type = "gif"
+
+            # 圖片
+            elif attachment_type == "image":
+
+                limit_type = "image"
+
+            # 影片
+            elif attachment_type == "video":
+
+                limit_type = "video"
+
+            # 檢查限制
+            if limit_type:
+
+                allowed = check_rate_limit(
+                    user_id,
+                    limit_type
+                )
+
+                if not allowed:
+
+                    limit_msg = {
+                        "image":
+                        "⚠️ 圖片傳送過快",
+
+                        "gif":
+                        "⚠️ GIF 傳送過快",
+
+                        "video":
+                        "⚠️ 影片傳送過快"
+                    }
+
+                    send_message(
+                        user_id,
+                        limit_msg[limit_type]
+                    )
+
+                    continue
+
             # 移除 Messenger sticker_id
             if "payload" in attachment:
 
@@ -194,10 +302,23 @@ def webhook():
 
                         text = message["text"]
 
-                        handle_text(
+                        # 防洗版
+                        if not check_rate_limit(
                             sender_id,
-                            text
-                        )
+                            "text"
+                        ):
+
+                            send_message(
+                                sender_id,
+                                "⚠️ 傳送過快，請稍後再試"
+                            )
+
+                        else:
+
+                            handle_text(
+                                sender_id,
+                                text
+                            )
 
                     # 附件
                     if "attachments" in message:
