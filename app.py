@@ -451,7 +451,7 @@ def handle_text(user_id, text):
                     try:
                         send_message(
                             target_user,
-                            "⚠️ 對方已離開聊天"
+                            "🥲 對方似乎不喜歡你，已離開聊天室"
                         )
                     except:
                         pass
@@ -544,7 +544,7 @@ def handle_text(user_id, text):
                 try:
                     send_message(
                         partner,
-                        "⚠️ 對方已離開聊天"
+                        "🥲 對方似乎不喜歡你，已離開聊天室"
                     )
                 except:
                     pass
@@ -586,6 +586,14 @@ def handle_text(user_id, text):
                 .delete() \
                 .eq("user_id", partner) \
                 .execute()
+
+            try:
+                send_message(
+                    partner,
+                    "⚠️ 對方已離開聊天室"
+                )
+            except:
+                pass
 
             send_message(
                 user_id,
@@ -652,7 +660,7 @@ def handle_text(user_id, text):
             try:
                 send_message(
                     partner,
-                    "🥲 對方似乎不喜歡你"
+                    "🥲 對方似乎不喜歡你，已離開聊天室"
                 )
             except:
                 pass
