@@ -189,18 +189,17 @@ def webhook():
 
                     message = messaging_event["message"]
 
-                    # =========================
                     # 文字
-                    # =========================
                     if "text" in message:
 
                         text = message["text"]
 
-                        handle_text(sender_id, text)
+                        handle_text(
+                            sender_id,
+                            text
+                        )
 
-                    # =========================
                     # 附件
-                    # =========================
                     if "attachments" in message:
 
                         handle_attachment(
@@ -252,6 +251,7 @@ def start_match(user_id):
 
         target = row["user_id"]
 
+        # 黑名單檢查
         check1 = supabase.table("blacklist") \
             .select("*") \
             .eq("user_id", user_id) \
@@ -358,11 +358,149 @@ def handle_text(user_id, text):
     try:
 
         # =========================
+        # 檢舉後確認
+        # =========================
+        pending = supabase.table("pending_actions") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .limit(1) \
+            .execute()
+
+        if pending.data:
+
+            action = pending.data[0]["action"]
+
+            if action == "report_confirm":
+
+                target_user = pending.data[0]["target_user_id"]
+
+                # 是
+                if text == "是":
+
+                    supabase.table("pending_actions") \
+                        .delete() \
+                        .eq("user_id", user_id) \
+                        .execute()
+
+                    check = supabase.table("blacklist") \
+                        .select("*") \
+                        .eq("user_id", user_id) \
+                        .eq(
+                            "blocked_user_id",
+                            target_user
+                        ) \
+                        .execute()
+
+                    if not check.data:
+
+                        supabase.table("blacklist").insert({
+                            "user_id": user_id,
+                            "blocked_user_id": target_user
+                        }).execute()
+
+                    supabase.table("chat_pairs") \
+                        .delete() \
+                        .eq("user_id", user_id) \
+                        .execute()
+
+                    supabase.table("chat_pairs") \
+                        .delete() \
+                        .eq("user_id", target_user) \
+                        .execute()
+
+                    send_message(
+                        user_id,
+                        "🚫 已封鎖對方並離開聊天室"
+                    )
+
+                    try:
+                        send_message(
+                            target_user,
+                            "⚠️ 對方已離開聊天"
+                        )
+                    except:
+                        pass
+
+                    return
+
+                # 否
+                if text == "否":
+
+                    supabase.table("pending_actions") \
+                        .delete() \
+                        .eq("user_id", user_id) \
+                        .execute()
+
+                    send_message(
+                        user_id,
+                        "✅ 已完成檢舉"
+                    )
+
+                    return
+
+                send_message(
+                    user_id,
+                    "請輸入：是 或 否"
+                )
+
+                return
+
+        # =========================
         # 開始
         # =========================
         if text == "開始":
 
             start_match(user_id)
+
+            return
+
+        # =========================
+        # 取消配對
+        # =========================
+        if text == "取消配對":
+
+            check = supabase.table("waiting_users") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .execute()
+
+            if not check.data:
+
+                send_message(
+                    user_id,
+                    "❌ 目前沒有在等待配對"
+                )
+
+                return
+
+            supabase.table("waiting_users") \
+                .delete() \
+                .eq("user_id", user_id) \
+                .execute()
+
+            send_message(
+                user_id,
+                "✅ 已取消配對"
+            )
+
+            return
+
+        # =========================
+        # 解除配對限制
+        # =========================
+        if text == "解除配對限制":
+
+            supabase.table("recent_pairs") \
+                .delete() \
+                .or_(
+                    f"user1.eq.{user_id},user2.eq.{user_id}"
+                ) \
+                .execute()
+
+            send_message(
+                user_id,
+                "✅ 已解除配對限制，現在可以重新配對到之前的人"
+            )
 
             return
 
@@ -652,6 +790,54 @@ def handle_text(user_id, text):
             send_message(
                 user_id,
                 "✅ 已成功解除封鎖"
+            )
+
+            return
+
+        # =========================
+        # 檢舉
+        # =========================
+        if text == "檢舉":
+
+            result = supabase.table("chat_pairs") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .limit(1) \
+                .execute()
+
+            if not result.data:
+
+                send_message(
+                    user_id,
+                    "目前沒有聊天對象"
+                )
+
+                return
+
+            partner = result.data[0]["partner_id"]
+
+            # 新增檢舉紀錄
+            supabase.table("reports").insert({
+                "reporter_id": user_id,
+                "reported_user_id": partner
+            }).execute()
+
+            # 清除舊狀態
+            supabase.table("pending_actions") \
+                .delete() \
+                .eq("user_id", user_id) \
+                .execute()
+
+            # 建立等待確認
+            supabase.table("pending_actions").insert({
+                "user_id": user_id,
+                "action": "report_confirm",
+                "target_user_id": partner
+            }).execute()
+
+            send_message(
+                user_id,
+                "🚨 已成功檢舉對方\n\n是否要封鎖並離開聊天室？\n請輸入：是 或 否"
             )
 
             return
