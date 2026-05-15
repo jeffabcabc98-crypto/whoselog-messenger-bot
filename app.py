@@ -1201,8 +1201,9 @@ def webhook():
 
     return "ok", 200
 
+setup_persistent_menu()
+
 if __name__ == "__main__":
-    setup_persistent_menu()
     app.run(
         host="0.0.0.0",
         port=5000
