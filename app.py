@@ -5,6 +5,7 @@ import random
 from datetime import datetime, timedelta, timezone
 from supabase import create_client
 
+
 app = Flask(__name__)
 
 PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
@@ -542,7 +543,8 @@ def handle_text(user_id, text):
                 return
 
         # 開始
-        if text == "開始":
+        if text in ["開始", "0011"]:
+
             start_match(user_id)
             return
 
@@ -576,7 +578,7 @@ def handle_text(user_id, text):
             return
 
         # 下一位
-        if text == "下一位":
+        if text in ["下一位", "0022"]:
 
             result = supabase.table("chat_pairs") \
                 .select("*") \
@@ -612,7 +614,7 @@ def handle_text(user_id, text):
             return
 
         # 離開
-        if text == "離開":
+        if text in ["離開", "0088"]:
 
             result = supabase.table("chat_pairs") \
                 .select("*") \
@@ -649,7 +651,7 @@ def handle_text(user_id, text):
             return
 
         # 封鎖
-        if text == "封鎖":
+        if text in ["封鎖", "0099"]:
 
             result = supabase.table("chat_pairs") \
                 .select("*") \
@@ -811,7 +813,7 @@ def handle_text(user_id, text):
             return
 
         # 檢舉
-        if text == "檢舉":
+        if text in ["檢舉", "0066"]:
 
             result = supabase.table("chat_pairs") \
                 .select("*") \
