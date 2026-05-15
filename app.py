@@ -312,6 +312,55 @@ def clear_chat_pair(user_id):
         print(e)
 
 # =========================
+# 使用者統計初始化
+# =========================
+def ensure_user_stats(user_id):
+
+    check = supabase.table("user_stats") \
+        .select("*") \
+        .eq("user_id", user_id) \
+        .limit(1) \
+        .execute()
+
+    if not check.data:
+
+        supabase.table("user_stats").insert({
+            "user_id": user_id
+        }).execute()
+
+# =========================
+# 增加風險分數
+# =========================
+def add_risk_score(
+    user_id,
+    block_add=0,
+    report_add=0,
+    risk_add=0
+):
+
+    ensure_user_stats(user_id)
+
+    current = supabase.table("user_stats") \
+        .select("*") \
+        .eq("user_id", user_id) \
+        .limit(1) \
+        .execute()
+
+    if not current.data:
+        return
+
+    row = current.data[0]
+
+    supabase.table("user_stats") \
+        .update({
+            "block_count": row["block_count"] + block_add,
+            "report_count": row["report_count"] + report_add,
+            "risk_score": row["risk_score"] + risk_add
+        }) \
+        .eq("user_id", user_id) \
+        .execute()
+
+# =========================
 # 配對
 # =========================
 def start_match(user_id):
@@ -468,7 +517,7 @@ def handle_text(user_id, text):
             # 確認離開聊天室
             if action == "confirm_leave":
 
-                if text == "是":
+                if text in ["是", "1"]:
 
                     result = supabase.table("chat_pairs") \
                         .select("*") \
@@ -509,7 +558,7 @@ def handle_text(user_id, text):
 
                     return
 
-                if text == "否":
+                if text in ["否", "2"]:
 
                     supabase.table("pending_actions") \
                         .delete() \
@@ -525,7 +574,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "請輸入：是 或 否"
+                    "請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
                 )
 
                 return
@@ -533,7 +582,7 @@ def handle_text(user_id, text):
             # 確認封鎖
             if action == "confirm_block":
 
-                if text == "是":
+                if text in ["是", "1"]:
 
                     result = supabase.table("chat_pairs") \
                         .select("*") \
@@ -577,6 +626,42 @@ def handle_text(user_id, text):
                         "blocked_user_id": partner
                     }).execute()
 
+                    pair_data = supabase.table("chat_pairs") \
+                        .select("*") \
+                        .eq("user_id", user_id) \
+                        .limit(1) \
+                        .execute()
+
+                    reporter_name = "未知使用者"
+                    reported_name = "未知使用者"
+
+                    if pair_data.data:
+
+                        reporter_name = pair_data.data[0].get(
+                            "fb_name",
+                            "未知使用者"
+                        )
+
+                        reported_name = pair_data.data[0].get(
+                            "partner_fb_name",
+                            "未知使用者"
+                        )
+
+                    supabase.table("reports").insert({
+                        "reporter_id": user_id,
+                        "reporter_name": reporter_name,
+                        "reported_user_id": partner,
+                        "reported_name": reported_name,
+                        "reason": "使用者封鎖"
+                    }).execute()
+
+                    add_risk_score(
+                        partner,
+                        block_add=1,
+                        report_add=1,
+                        risk_add=4
+                    )
+
                     clear_chat_pair(user_id)
 
                     send_message(
@@ -593,7 +678,7 @@ def handle_text(user_id, text):
 
                     return
 
-                if text == "否":
+                if text in ["否", "2"]:
 
                     supabase.table("pending_actions") \
                         .delete() \
@@ -609,7 +694,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "請輸入：是 或 否"
+                    "請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
                 )
 
                 return
@@ -618,7 +703,7 @@ def handle_text(user_id, text):
             # 確認下一位
             if action == "confirm_next":
 
-                if text == "是":
+                if text in ["是", "1"]:
 
                     result = supabase.table("chat_pairs") \
                         .select("*") \
@@ -659,7 +744,7 @@ def handle_text(user_id, text):
 
                     return
 
-                if text == "否":
+                if text in ["否", "2"]:
 
                     supabase.table("pending_actions") \
                         .delete() \
@@ -675,7 +760,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "請輸入：是 或 否"
+                    "請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
                 )
 
                 return
@@ -739,6 +824,12 @@ def handle_text(user_id, text):
                     "reason": reason
                 }).execute()
 
+                add_risk_score(
+                    target_user,
+                    report_add=1,
+                    risk_add=3
+                )
+
                 supabase.table("pending_actions") \
                     .delete() \
                     .eq("user_id", user_id) \
@@ -752,7 +843,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "✅ 已送出檢舉\n\n是否要封鎖並離開聊天室？\n請輸入：是 或 否"
+                    "✅ 已送出檢舉\n\n是否要封鎖並離開聊天室？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
                 )
 
                 return
@@ -762,7 +853,27 @@ def handle_text(user_id, text):
 
                 target_user = pending.data[0]["target_user_id"]
 
-                if text == "是":
+                check = supabase.table("blacklist") \
+                    .select("*") \
+                    .eq("user_id", user_id) \
+                    .eq("blocked_user_id", target_user) \
+                    .execute()
+
+                if check.data:
+
+                    supabase.table("pending_actions") \
+                        .delete() \
+                        .eq("user_id", user_id) \
+                        .execute()
+
+                    send_message(
+                        user_id,
+                        "⚠️ 你已經封鎖過此人"
+                    )
+
+                    return
+
+                if text in ["是", "1"]:
 
                     supabase.table("pending_actions") \
                         .delete() \
@@ -773,6 +884,7 @@ def handle_text(user_id, text):
                         "user_id": user_id,
                         "blocked_user_id": target_user
                     }).execute()
+
                     clear_chat_pair(user_id)
 
                     send_message(
@@ -790,7 +902,7 @@ def handle_text(user_id, text):
 
                     return
 
-                if text == "否":
+                if text in ["否", "2"]:
 
                     supabase.table("pending_actions") \
                         .delete() \
@@ -806,7 +918,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "請輸入：是 或 否"
+                    "請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
                 )
 
                 return
@@ -876,7 +988,7 @@ def handle_text(user_id, text):
 
             send_message(
                 user_id,
-                "⚠️ 確定要離開目前聊天室並尋找下一位嗎？\n請輸入：是 或 否"
+                "⚠️ 確定要離開目前聊天室並尋找下一位嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
             )
 
             return
@@ -911,7 +1023,7 @@ def handle_text(user_id, text):
 
             send_message(
                 user_id,
-                "⚠️ 確定要離開聊天室嗎？\n請輸入：是 或 否"
+                "⚠️ 確定要離開聊天室嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
             )
 
             return
@@ -963,7 +1075,7 @@ def handle_text(user_id, text):
 
             send_message(
                 user_id,
-                "⚠️ 確定要封鎖對方嗎？\n請輸入：是 或 否"
+                "⚠️ 確定要封鎖對方嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
             )
 
             return
@@ -1171,15 +1283,7 @@ def webhook():
                 
                     if payload == "GET_STARTED":
 
-                        send_message(
-                            sender_id,
-                            "👋 歡迎使用匿名聊天室\n\n"
-                            "📌 指令：\n"
-                            "• 開始 / 0011\n"
-                            "• 下一位 / 0033\n"
-                            "• 離開 / 0088\n"
-                            "• 檢舉 / 0066"
-                        )
+                        send_help_menu(sender_id)
 
                     elif payload == "START_CHAT":
                 
