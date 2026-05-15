@@ -1,6 +1,37 @@
 from flask import Flask, request
 import os
 import requests
+def setup_persistent_menu():
+    url = f"https://graph.facebook.com/v23.0/me/messenger_profile?access_token={PAGE_ACCESS_TOKEN}"
+
+    data = {
+        "persistent_menu": [
+            {
+                "locale": "default",
+                "composer_input_disabled": False,
+                "call_to_actions": [
+                    {
+                        "type": "postback",
+                        "title": "開始配對",
+                        "payload": "START_CHAT"
+                    },
+                    {
+                        "type": "postback",
+                        "title": "離開聊天室",
+                        "payload": "LEAVE_CHAT"
+                    },
+                    {
+                        "type": "postback",
+                        "title": "使用說明",
+                        "payload": "HELP"
+                    }
+                ]
+            }
+        ]
+    }
+
+    response = requests.post(url, json=data)
+    print(response.text)
 import random
 from datetime import datetime, timedelta, timezone
 from supabase import create_client
@@ -1097,23 +1128,46 @@ def webhook():
             for messaging_event in entry["messaging"]:
 
                 sender_id = messaging_event["sender"]["id"]
+                # ===== 選單按鈕 =====
+                if "postback" in messaging_event:
+                
+                    payload = messaging_event["postback"]["payload"]
+                
+                    if payload == "START_CHAT":
+                
+                        handle_text(sender_id, "開始")
+                
+                    elif payload == "LEAVE_CHAT":
+                
+                        handle_text(sender_id, "離開")
+                
+                    elif payload == "HELP":
+                
+                        send_message(
+                            sender_id,
+                            "📌 使用說明\n\n"
+                            "• 點選開始配對即可聊天\n"
+                            "• 可隨時離開聊天室"
+                        )
 
-                banned = supabase.table("banned_users") \
-                    .select("*") \
-                    .eq("user_id", sender_id) \
-                    .limit(1) \
-                    .execute()
 
-                if banned.data:
-
-                    send_message(
-                        sender_id,
-                        "🚫 你的帳號已被停權"
-                    )
-
-                    continue
-
+                # ===== 一般訊息 =====
                 if "message" in messaging_event:
+
+                    banned = supabase.table("banned_users") \
+                        .select("*") \
+                        .eq("user_id", sender_id) \
+                        .limit(1) \
+                        .execute()
+
+                    if banned.data:
+
+                        send_message(
+                            sender_id,
+                            "🚫 你的帳號已被停權"
+                        )
+
+                        continue
 
                     message = messaging_event["message"]
 
@@ -1148,7 +1202,7 @@ def webhook():
     return "ok", 200
 
 if __name__ == "__main__":
-
+    setup_persistent_menu()
     app.run(
         host="0.0.0.0",
         port=5000
