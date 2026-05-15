@@ -210,6 +210,41 @@ def handle_attachment(user_id, attachments):
             print(e)
 
 # =========================
+# 清理聊天室配對
+# =========================
+def clear_chat_pair(user_id):
+
+    try:
+
+        result = supabase.table("chat_pairs") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .limit(1) \
+            .execute()
+
+        if result.data:
+
+            partner = result.data[0]["partner_id"]
+
+            supabase.table("chat_pairs") \
+                .delete() \
+                .or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}") \
+                .execute()
+
+            supabase.table("chat_pairs") \
+                .delete() \
+                .or_(f"user_id.eq.{partner},partner_id.eq.{partner}") \
+                .execute()
+
+            supabase.table("waiting_users") \
+                .delete() \
+                .or_(f"user_id.eq.{user_id},user_id.eq.{partner}") \
+                .execute()
+
+    except Exception as e:
+        print(e)
+
+# =========================
 # 配對
 # =========================
 def start_match(user_id):
@@ -297,18 +332,25 @@ def start_match(user_id):
         nickname1 = generate_nickname()
         nickname2 = generate_nickname()
 
+        fb_name1 = get_user_name(user_id)
+        fb_name2 = get_user_name(partner)
+
         supabase.table("chat_pairs").insert([
             {
                 "user_id": user_id,
                 "partner_id": partner,
                 "nickname": nickname1,
-                "partner_nickname": nickname2
+                "partner_nickname": nickname2,
+                "fb_name": fb_name1,
+                "partner_fb_name": fb_name2
             },
             {
                 "user_id": partner,
                 "partner_id": user_id,
                 "nickname": nickname2,
-                "partner_nickname": nickname1
+                "partner_nickname": nickname1,
+                "fb_name": fb_name2,
+                "partner_fb_name": fb_name1
             }
         ]).execute()
 
@@ -433,15 +475,7 @@ def handle_text(user_id, text):
                         "blocked_user_id": target_user
                     }).execute()
 
-                    supabase.table("chat_pairs") \
-                        .delete() \
-                        .eq("user_id", user_id) \
-                        .execute()
-
-                    supabase.table("chat_pairs") \
-                        .delete() \
-                        .eq("user_id", target_user) \
-                        .execute()
+                clear_chat_pair(user_id)
 
                     send_message(
                         user_id,
@@ -531,15 +565,7 @@ def handle_text(user_id, text):
                     "user2": partner
                 }).execute()
 
-                supabase.table("chat_pairs") \
-                    .delete() \
-                    .eq("user_id", user_id) \
-                    .execute()
-
-                supabase.table("chat_pairs") \
-                    .delete() \
-                    .eq("user_id", partner) \
-                    .execute()
+                clear_chat_pair(user_id)
 
                 try:
                     send_message(
@@ -577,15 +603,7 @@ def handle_text(user_id, text):
 
             partner = result.data[0]["partner_id"]
 
-            supabase.table("chat_pairs") \
-                .delete() \
-                .eq("user_id", user_id) \
-                .execute()
-
-            supabase.table("chat_pairs") \
-                .delete() \
-                .eq("user_id", partner) \
-                .execute()
+                    clear_chat_pair(user_id)
 
             try:
                 send_message(
@@ -642,15 +660,7 @@ def handle_text(user_id, text):
                 "blocked_user_id": partner
             }).execute()
 
-            supabase.table("chat_pairs") \
-                .delete() \
-                .eq("user_id", user_id) \
-                .execute()
-
-            supabase.table("chat_pairs") \
-                .delete() \
-                .eq("user_id", partner) \
-                .execute()
+                clear_chat_pair(user_id)
 
             send_message(
                 user_id,
