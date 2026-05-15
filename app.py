@@ -20,11 +20,6 @@ def setup_persistent_menu():
                         "title": "離開聊天室",
                         "payload": "LEAVE_CHAT"
                     },
-                    {
-                        "type": "postback",
-                        "title": "使用說明",
-                        "payload": "HELP"
-                    }
                 ]
             }
         ]
