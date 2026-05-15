@@ -31,7 +31,8 @@ def setup_persistent_menu():
     }
 
     response = requests.post(url, json=data)
-    print(response.text)
+    print("MENU API RESPONSE:", response.text)
+    
 import random
 from datetime import datetime, timedelta, timezone
 from supabase import create_client
