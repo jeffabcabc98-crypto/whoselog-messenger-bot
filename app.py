@@ -549,7 +549,7 @@ def handle_text(user_id, text):
             return
 
         # 取消配對
-        if text == "取消配對":
+        if text in ["取消配對", "0022"]:
 
             check = supabase.table("waiting_users") \
                 .select("*") \
@@ -578,7 +578,7 @@ def handle_text(user_id, text):
             return
 
         # 下一位
-        if text in ["下一位", "0022"]:
+        if text in ["下一位", "0033"]:
 
             result = supabase.table("chat_pairs") \
                 .select("*") \
