@@ -905,6 +905,21 @@ def webhook():
 
                 sender_id = messaging_event["sender"]["id"]
 
+                banned = supabase.table("banned_users") \
+                    .select("*") \
+                    .eq("user_id", sender_id) \
+                    .limit(1) \
+                    .execute()
+
+                if banned.data:
+
+                    send_message(
+                        sender_id,
+                        "🚫 你的帳號已被停權"
+                    )
+
+                    continue
+
                 if "message" in messaging_event:
 
                     message = messaging_event["message"]
