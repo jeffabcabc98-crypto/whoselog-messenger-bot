@@ -2,9 +2,14 @@ from flask import Flask, request
 import os
 import requests
 def setup_persistent_menu():
-    url = f"https://graph.facebook.com/v23.0/me/messenger_profile?access_token={PAGE_ACCESS_TOKEN}"
+    url = f"https://graph.facebook.com/v19.0/me/messenger_profile?access_token={PAGE_ACCESS_TOKEN}"
 
     data = {
+
+        "get_started": {
+            "payload": "GET_STARTED"
+        },
+
         "persistent_menu": [
             {
                 "locale": "default",
@@ -1129,7 +1134,19 @@ def webhook():
                 
                     payload = messaging_event["postback"]["payload"]
                 
-                    if payload == "START_CHAT":
+                    if payload == "GET_STARTED":
+
+                        send_message(
+                            sender_id,
+                            "👋 歡迎使用匿名聊天室\n\n"
+                            "📌 指令：\n"
+                            "• 開始 / 0011\n"
+                            "• 下一位 / 0033\n"
+                            "• 離開 / 0088\n"
+                            "• 檢舉 / 0066"
+                        )
+
+                    elif payload == "START_CHAT":
                 
                         handle_text(sender_id, "開始")
                 
@@ -1137,15 +1154,6 @@ def webhook():
                 
                         handle_text(sender_id, "離開")
                 
-                    elif payload == "HELP":
-                
-                        send_message(
-                            sender_id,
-                            "📌 使用說明\n\n"
-                            "• 點選開始配對即可聊天\n"
-                            "• 可隨時離開聊天室"
-                        )
-
 
                 # ===== 一般訊息 =====
                 if "message" in messaging_event:
