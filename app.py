@@ -144,6 +144,29 @@ def send_message(user_id, text):
     )
 
 # =========================
+# 功能列表
+# =========================
+def send_help_menu(user_id):
+
+    send_message(
+        user_id,
+        "👋 歡迎使用匿名聊天室\n\n"
+        "📌 功能列表：\n\n"
+        "💬 配對功能\n"
+        "• 開始 / 0011\n"
+        "• 取消配對 / 0022\n"
+        "• 下一位 / 0033\n"
+        "• 離開 / 0088\n\n"
+        "🚫 管理功能\n"
+        "• 封鎖 / 0099\n"
+        "• 黑名單\n"
+        "• 解除封鎖\n"
+        "• 檢舉 / 0066\n\n"
+        "🔓 其他功能\n"
+        "• 解除配對限制 / 2222"
+    )
+
+# =========================
 # 發送附件
 # =========================
 def send_attachment(user_id, attachment):
@@ -174,7 +197,7 @@ def handle_attachment(user_id, attachments):
 
     if not result.data:
 
-        send_message(user_id, "輸入「開始」開始匿名聊天")
+        send_help_menu(user_id)
         return
 
     partner = result.data[0]["partner_id"]
@@ -534,6 +557,21 @@ def handle_text(user_id, text):
 
                     partner = result.data[0]["partner_id"]
 
+                    check = supabase.table("blacklist") \
+                        .select("*") \
+                        .eq("user_id", user_id) \
+                        .eq("blocked_user_id", partner) \
+                        .execute()
+
+                    if check.data:
+
+                        send_message(
+                            user_id,
+                            "⚠️ 你已經封鎖過此人"
+                        )
+
+                        return
+
                     supabase.table("blacklist").insert({
                         "user_id": user_id,
                         "blocked_user_id": partner
@@ -545,7 +583,6 @@ def handle_text(user_id, text):
                         user_id,
                         "🚫 已成功將對方封鎖"
                     )
-
                     try:
                         send_message(
                             partner,
@@ -642,7 +679,8 @@ def handle_text(user_id, text):
                 )
 
                 return
-# 檢舉原因
+
+            # 檢舉原因
             if action == "report_reason":
 
                 target_user = pending.data[0]["target_user_id"]
@@ -1092,10 +1130,7 @@ def handle_text(user_id, text):
 
         else:
 
-            send_message(
-                user_id,
-                "輸入「開始」開始匿名聊天"
-            )
+            send_help_menu(user_id)
 
     except Exception as e:
         print(e)
