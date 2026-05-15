@@ -410,7 +410,140 @@ def handle_text(user_id, text):
         if pending.data:
 
             action = pending.data[0]["action"]
+            # 確認離開聊天室
+            if action == "confirm_leave":
 
+                if text == "是":
+
+                    result = supabase.table("chat_pairs") \
+                        .select("*") \
+                        .eq("user_id", user_id) \
+                        .limit(1) \
+                        .execute()
+
+                    supabase.table("pending_actions") \
+                        .delete() \
+                        .eq("user_id", user_id) \
+                        .execute()
+
+                    if not result.data:
+
+                        send_message(
+                            user_id,
+                            "目前沒有聊天對象"
+                        )
+
+                        return
+
+                    partner = result.data[0]["partner_id"]
+
+                    clear_chat_pair(user_id)
+
+                    try:
+                        send_message(
+                            partner,
+                            "⚠️ 對方已離開聊天室"
+                        )
+                    except:
+                        pass
+
+                    send_message(
+                        user_id,
+                        "✅ 你已離開聊天"
+                    )
+
+                    return
+
+                if text == "否":
+
+                    supabase.table("pending_actions") \
+                        .delete() \
+                        .eq("user_id", user_id) \
+                        .execute()
+
+                    send_message(
+                        user_id,
+                        "✅ 已取消離開聊天室"
+                    )
+
+                    return
+
+                send_message(
+                    user_id,
+                    "請輸入：是 或 否"
+                )
+
+                return
+
+            # 確認封鎖
+            if action == "confirm_block":
+
+                if text == "是":
+
+                    result = supabase.table("chat_pairs") \
+                        .select("*") \
+                        .eq("user_id", user_id) \
+                        .limit(1) \
+                        .execute()
+
+                    supabase.table("pending_actions") \
+                        .delete() \
+                        .eq("user_id", user_id) \
+                        .execute()
+
+                    if not result.data:
+
+                        send_message(
+                            user_id,
+                            "目前沒有聊天對象"
+                        )
+
+                        return
+
+                    partner = result.data[0]["partner_id"]
+
+                    supabase.table("blacklist").insert({
+                        "user_id": user_id,
+                        "blocked_user_id": partner
+                    }).execute()
+
+                    clear_chat_pair(user_id)
+
+                    send_message(
+                        user_id,
+                        "🚫 已成功將對方封鎖"
+                    )
+
+                    try:
+                        send_message(
+                            partner,
+                            "🥲 對方似乎不喜歡你，已離開聊天室"
+                        )
+                    except:
+                        pass
+
+                    return
+
+                if text == "否":
+
+                    supabase.table("pending_actions") \
+                        .delete() \
+                        .eq("user_id", user_id) \
+                        .execute()
+
+                    send_message(
+                        user_id,
+                        "✅ 已取消封鎖"
+                    )
+
+                    return
+
+                send_message(
+                    user_id,
+                    "請輸入：是 或 否"
+                )
+
+                return
             # 檢舉原因
             if action == "report_reason":
 
@@ -614,6 +747,7 @@ def handle_text(user_id, text):
             return
 
         # 離開
+        # 離開
         if text in ["離開", "0088"]:
 
             result = supabase.table("chat_pairs") \
@@ -631,25 +765,24 @@ def handle_text(user_id, text):
 
                 return
 
-            partner = result.data[0]["partner_id"]
+            supabase.table("pending_actions") \
+                .delete() \
+                .eq("user_id", user_id) \
+                .execute()
 
-            clear_chat_pair(user_id)
-
-            try:
-                send_message(
-                    partner,
-                    "⚠️ 對方已離開聊天室"
-                )
-            except:
-                pass
+            supabase.table("pending_actions").insert({
+                "user_id": user_id,
+                "action": "confirm_leave"
+            }).execute()
 
             send_message(
                 user_id,
-                "✅ 你已離開聊天"
+                "⚠️ 確定要離開聊天室嗎？\n請輸入：是 或 否"
             )
 
             return
 
+        # 封鎖
         # 封鎖
         if text in ["封鎖", "0099"]:
 
@@ -685,25 +818,20 @@ def handle_text(user_id, text):
 
                 return
 
-            supabase.table("blacklist").insert({
-                "user_id": user_id,
-                "blocked_user_id": partner
-            }).execute()
+            supabase.table("pending_actions") \
+                .delete() \
+                .eq("user_id", user_id) \
+                .execute()
 
-            clear_chat_pair(user_id)
+            supabase.table("pending_actions").insert({
+                "user_id": user_id,
+                "action": "confirm_block"
+            }).execute()
 
             send_message(
                 user_id,
-                "🚫 已成功將對方封鎖"
+                "⚠️ 確定要封鎖對方嗎？\n請輸入：是 或 否"
             )
-
-            try:
-                send_message(
-                    partner,
-                    "🥲 對方似乎不喜歡你，已離開聊天室"
-                )
-            except:
-                pass
 
             return
 
