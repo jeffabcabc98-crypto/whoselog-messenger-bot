@@ -440,8 +440,26 @@ def handle_text(user_id, text):
 
                     return
 
-                reporter_name = get_user_name(user_id)
-                reported_name = get_user_name(target_user)
+                pair_data = supabase.table("chat_pairs") \
+                    .select("*") \
+                    .eq("user_id", user_id) \
+                    .limit(1) \
+                    .execute()
+
+                reporter_name = "未知使用者"
+                reported_name = "未知使用者"
+
+                if pair_data.data:
+
+                    reporter_name = pair_data.data[0].get(
+                        "fb_name",
+                        "未知使用者"
+                    )
+
+                    reported_name = pair_data.data[0].get(
+                        "partner_fb_name",
+                        "未知使用者"
+                    )
 
                 supabase.table("reports").insert({
                     "reporter_id": user_id,
@@ -575,7 +593,7 @@ def handle_text(user_id, text):
                     "user2": partner
                 }).execute()
 
-            clear_chat_pair(user_id)
+                clear_chat_pair(user_id)
 
                 try:
                     send_message(
@@ -670,7 +688,7 @@ def handle_text(user_id, text):
                 "blocked_user_id": partner
             }).execute()
 
-                clear_chat_pair(user_id)
+            clear_chat_pair(user_id)
 
             send_message(
                 user_id,
