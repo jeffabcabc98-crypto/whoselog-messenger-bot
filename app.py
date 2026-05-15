@@ -544,7 +544,73 @@ def handle_text(user_id, text):
                 )
 
                 return
-            # 檢舉原因
+            
+
+            # 確認下一位
+            if action == "confirm_next":
+
+                if text == "是":
+
+                    result = supabase.table("chat_pairs") \
+                        .select("*") \
+                        .eq("user_id", user_id) \
+                        .limit(1) \
+                        .execute()
+
+                    supabase.table("pending_actions") \
+                        .delete() \
+                        .eq("user_id", user_id) \
+                        .execute()
+
+                    if result.data:
+
+                        partner = result.data[0]["partner_id"]
+
+                        supabase.table("recent_pairs").insert({
+                            "user1": user_id,
+                            "user2": partner
+                        }).execute()
+
+                        clear_chat_pair(user_id)
+
+                        try:
+                            send_message(
+                                partner,
+                                "🥲 對方似乎不喜歡你，已離開聊天室"
+                            )
+                        except:
+                            pass
+
+                    send_message(
+                        user_id,
+                        "🔄 正在幫你尋找下一位..."
+                    )
+
+                    start_match(user_id)
+
+                    return
+
+                if text == "否":
+
+                    supabase.table("pending_actions") \
+                        .delete() \
+                        .eq("user_id", user_id) \
+                        .execute()
+
+                    send_message(
+                        user_id,
+                        "✅ 已取消尋找下一位"
+                    )
+
+                    return
+
+                send_message(
+                    user_id,
+                    "請輸入：是 或 否"
+                )
+
+                return
+# 檢舉原因
             if action == "report_reason":
 
                 target_user = pending.data[0]["target_user_id"]
@@ -719,34 +785,32 @@ def handle_text(user_id, text):
                 .limit(1) \
                 .execute()
 
-            if result.data:
+            if not result.data:
 
-                partner = result.data[0]["partner_id"]
+                send_message(
+                    user_id,
+                    "目前沒有聊天對象"
+                )
 
-                supabase.table("recent_pairs").insert({
-                    "user1": user_id,
-                    "user2": partner
-                }).execute()
+                return
 
-                clear_chat_pair(user_id)
+            supabase.table("pending_actions") \
+                .delete() \
+                .eq("user_id", user_id) \
+                .execute()
 
-                try:
-                    send_message(
-                        partner,
-                        "🥲 對方似乎不喜歡你，已離開聊天室"
-                    )
-                except:
-                    pass
+            supabase.table("pending_actions").insert({
+                "user_id": user_id,
+                "action": "confirm_next"
+            }).execute()
 
             send_message(
                 user_id,
-                "🔄 正在幫你尋找下一位..."
+                "⚠️ 確定要離開目前聊天室並尋找下一位嗎？\n請輸入：是 或 否"
             )
 
-            start_match(user_id)
             return
 
-        # 離開
         # 離開
         if text in ["離開", "0088"]:
 
@@ -782,7 +846,6 @@ def handle_text(user_id, text):
 
             return
 
-        # 封鎖
         # 封鎖
         if text in ["封鎖", "0099"]:
 
