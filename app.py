@@ -798,7 +798,7 @@ def handle_text(user_id, text):
             return
 
         # 解除配對限制
-        if text == "解除配對限制":
+        if text in ["解除配對限制", "2222"]:
 
             supabase.table("recent_pairs") \
                 .delete() \
