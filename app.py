@@ -71,9 +71,9 @@ def get_user_name(user_id):
     try:
 
         response = requests.get(
-            f"https://graph.facebook.com/{user_id}",
+            f"https://graph.facebook.com/v19.0/{user_id}",
             params={
-                "fields": "name",
+                "fields": "first_name,last_name,name",
                 "access_token": PAGE_ACCESS_TOKEN
             },
             timeout=10
@@ -81,7 +81,13 @@ def get_user_name(user_id):
 
         data = response.json()
 
-        return data.get("name", "未知使用者")
+        return (
+            data.get("name")
+            or (
+                data.get("first_name", "") + " " + data.get("last_name", "")
+            ).strip()
+            or "未知使用者"
+        )
 
     except:
         return "未知使用者"
@@ -239,6 +245,11 @@ def clear_chat_pair(user_id):
             supabase.table("waiting_users") \
                 .delete() \
                 .or_(f"user_id.eq.{user_id},user_id.eq.{partner}") \
+                .execute()
+
+            supabase.table("pending_actions") \
+                .delete() \
+                .eq("user_id", user_id) \
                 .execute()
 
     except Exception as e:
@@ -474,8 +485,7 @@ def handle_text(user_id, text):
                         "user_id": user_id,
                         "blocked_user_id": target_user
                     }).execute()
-
-                clear_chat_pair(user_id)
+                    clear_chat_pair(user_id)
 
                     send_message(
                         user_id,
@@ -565,7 +575,7 @@ def handle_text(user_id, text):
                     "user2": partner
                 }).execute()
 
-                clear_chat_pair(user_id)
+            clear_chat_pair(user_id)
 
                 try:
                     send_message(
@@ -603,7 +613,7 @@ def handle_text(user_id, text):
 
             partner = result.data[0]["partner_id"]
 
-                    clear_chat_pair(user_id)
+            clear_chat_pair(user_id)
 
             try:
                 send_message(
