@@ -1382,14 +1382,90 @@ def webhook():
             print("ENTRY:", entry)
 
             if "changes" in entry:
+
                 print("INSTAGRAM CHANGES:", entry["changes"])
+
+                for change in entry["changes"]:
+
+                    value = change.get("value", {})
+
+                    if "messages" in value:
+
+                        for msg in value["messages"]:
+
+                            sender_id = msg["from"]["id"]
+
+                            banned = supabase.table("banned_users") \
+                                .select("*") \
+                                .eq("user_id", sender_id) \
+                                .limit(1) \
+                                .execute()
+
+                            if banned.data:
+
+                                send_message(
+                                    sender_id,
+                                    "🚫 你的帳號已被停權"
+                                )
+
+                                continue
+
+                            if "text" in msg:
+
+                                text = msg["text"]["body"]
+
+                                if not check_rate_limit(
+                                    sender_id,
+                                    "text"
+                                ):
+
+                                    send_message(
+                                        sender_id,
+                                        "⚠️ 傳送過快，請稍後再試"
+                                    )
+
+                                else:
+
+                                    handle_text(sender_id, text)
+
+                            if "attachments" in msg:
+
+                                attachments = []
+
+                                for att in msg["attachments"]:
+
+                                    attachment_type = att.get("type", "image")
+
+                                    media_url = ""
+
+                                    if "image" in att:
+                                        media_url = att["image"].get("url", "")
+
+                                    elif "video" in att:
+                                        media_url = att["video"].get("url", "")
+
+                                    elif "audio" in att:
+                                        media_url = att["audio"].get("url", "")
+
+                                    attachments.append({
+                                        "type": attachment_type,
+                                        "payload": {
+                                            "url": media_url
+                                        }
+                                    })
+
+                                handle_attachment(
+                                    sender_id,
+                                    attachments
+                                )
 
             print("FULL WEBHOOK:", data)
 
             if "messaging" not in entry:
-                continue
+                pass
+            else:
 
-            for messaging_event in entry["messaging"]:
+                for messaging_event in entry["messaging"]:
 
                 sender_id = messaging_event["sender"]["id"]
                 # ===== 選單按鈕 =====
@@ -1463,7 +1539,9 @@ def webhook():
 if __name__ == "__main__":
     setup_persistent_menu()
 
+    port = int(os.environ.get("PORT", 8080))
+
     app.run(
         host="0.0.0.0",
-        port=5000
+        port=port
     )
