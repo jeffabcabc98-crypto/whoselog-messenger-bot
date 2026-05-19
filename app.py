@@ -103,6 +103,35 @@ def get_user_name(user_id):
 
     try:
 
+        # =========================
+        # 先查本地資料庫 cache
+        # =========================
+        cached = supabase.table("users") \
+            .select("*") \
+            .eq("user_id", user_id) \
+            .limit(1) \
+            .execute()
+
+        if cached.data:
+
+            fb_name = cached.data[0].get("fb_name")
+
+            if fb_name and fb_name != "未知使用者":
+
+                supabase.table("users") \
+                    .update({
+                        "last_seen": datetime.now(timezone.utc).isoformat()
+                    }) \
+                    .eq("user_id", user_id) \
+                    .execute()
+
+                print("USING CACHED FB NAME:", fb_name)
+
+                return fb_name
+
+        # =========================
+        # 查 Facebook API
+        # =========================
         response = requests.get(
             f"https://graph.facebook.com/v19.0/{user_id}",
             params={
@@ -126,7 +155,16 @@ def get_user_name(user_id):
         )
 
         if not name:
-            return "未知使用者"
+            name = "未知使用者"
+
+        # =========================
+        # 存入 cache
+        # =========================
+        supabase.table("users").upsert({
+            "user_id": user_id,
+            "fb_name": name,
+            "last_seen": datetime.now(timezone.utc).isoformat()
+        }).execute()
 
         return name
 
@@ -138,6 +176,32 @@ def get_user_name(user_id):
             print("FB ERROR RESPONSE:", response.text)
         except:
             pass
+
+        # =========================
+        # API 失敗時再查 cache
+        # =========================
+        try:
+
+            cached = supabase.table("users") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .limit(1) \
+                .execute()
+
+            if cached.data:
+
+                fb_name = cached.data[0].get(
+                    "fb_name",
+                    "未知使用者"
+                )
+
+                print("FALLBACK CACHE NAME:", fb_name)
+
+                return fb_name
+
+        except Exception as cache_error:
+
+            print("CACHE FALLBACK ERROR:", cache_error)
 
         return "未知使用者"
 
