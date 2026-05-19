@@ -1375,10 +1375,10 @@ def webhook():
 
     data = request.json
 
-    if data.get("object") == "page":
+    if data["object"] in ["page", "instagram"]:
 
         for entry in data["entry"]:
-
+            print("FULL WEBHOOK:", data)
             for messaging_event in entry["messaging"]:
 
                 sender_id = messaging_event["sender"]["id"]
