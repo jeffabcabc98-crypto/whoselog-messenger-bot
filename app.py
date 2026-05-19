@@ -1386,6 +1386,9 @@ def webhook():
 
         print("FULL WEBHOOK:", data)
 
+        if "messaging" not in entry:
+            continue
+
         for messaging_event in entry["messaging"]:
 
                 sender_id = messaging_event["sender"]["id"]
