@@ -1489,7 +1489,7 @@ def webhook():
                     # ===== 一般訊息 =====
                     if "message" in messaging_event:
 
-                    banned = supabase.table("banned_users") \
+                        banned = supabase.table("banned_users") \
                         .select("*") \
                         .eq("user_id", sender_id) \
                         .limit(1) \
