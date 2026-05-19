@@ -213,7 +213,7 @@ def send_message(user_id, text):
     try:
 
         response = requests.post(
-            "https://graph.facebook.com/v19.0/me/messages",
+            "https://graph.facebook.com/v25.0/me/messages",
             headers={
                 "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
                 "Content-Type": "application/json"
@@ -268,7 +268,7 @@ def send_attachment(user_id, attachment):
     try:
 
         response = requests.post(
-            "https://graph.facebook.com/v19.0/me/messages",
+            "https://graph.facebook.com/v25.0/me/messages",
             headers={
                 "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
                 "Content-Type": "application/json"
