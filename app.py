@@ -109,20 +109,31 @@ def get_user_name(user_id):
                 "fields": "first_name,last_name,name",
                 "access_token": PAGE_ACCESS_TOKEN
             },
-            timeout=10
+            timeout=15
         )
+
+        response.raise_for_status()
 
         data = response.json()
 
-        return (
+        print("FB USER API:", data)
+
+        name = (
             data.get("name")
             or (
                 data.get("first_name", "") + " " + data.get("last_name", "")
             ).strip()
-            or "未知使用者"
         )
 
-    except:
+        if not name:
+            return "未知使用者"
+
+        return name
+
+    except Exception as e:
+
+        print("GET USER NAME ERROR:", e)
+
         return "未知使用者"
 
 # =========================
@@ -313,7 +324,7 @@ def clear_chat_pair(user_id):
                 .execute()
 
     except Exception as e:
-        print(e)
+        print("HANDLE_TEXT ERROR:", e)
 
 # =========================
 # 使用者統計初始化
@@ -1249,7 +1260,7 @@ def handle_text(user_id, text):
             send_help_menu(user_id)
 
     except Exception as e:
-        print(e)
+        print("HANDLE_TEXT ERROR:", e)
 
 # =========================
 # Webhook 驗證
