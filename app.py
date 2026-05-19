@@ -1467,27 +1467,27 @@ def webhook():
 
                 for messaging_event in entry["messaging"]:
 
-                sender_id = messaging_event["sender"]["id"]
-                # ===== 選單按鈕 =====
-                if "postback" in messaging_event:
-                
-                    payload = messaging_event["postback"]["payload"]
-                
-                    if payload == "GET_STARTED":
+                    sender_id = messaging_event["sender"]["id"]
 
-                        send_help_menu(sender_id)
+                    # ===== 選單按鈕 =====
+                    if "postback" in messaging_event:
 
-                    elif payload == "START_CHAT":
-                
-                        handle_text(sender_id, "開始")
-                
-                    elif payload == "LEAVE_CHAT":
-                
-                        handle_text(sender_id, "離開")
-                
+                        payload = messaging_event["postback"]["payload"]
 
-                # ===== 一般訊息 =====
-                if "message" in messaging_event:
+                        if payload == "GET_STARTED":
+
+                            send_help_menu(sender_id)
+
+                        elif payload == "START_CHAT":
+
+                            handle_text(sender_id, "開始")
+
+                        elif payload == "LEAVE_CHAT":
+
+                            handle_text(sender_id, "離開")
+
+                    # ===== 一般訊息 =====
+                    if "message" in messaging_event:
 
                     banned = supabase.table("banned_users") \
                         .select("*") \
