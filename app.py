@@ -1382,131 +1382,80 @@ def webhook():
             print("ENTRY:", entry)
 
             if "changes" in entry:
-
                 print("INSTAGRAM CHANGES:", entry["changes"])
-
-                for change in entry["changes"]:
-
-                    value = change.get("value", {})
-
-                    if "messages" in value:
-
-                        for msg in value["messages"]:
-
-                            sender_id = msg["from"]["id"]
-
-                            banned = supabase.table("banned_users") \
-                                .select("*") \
-                                .eq("user_id", sender_id) \
-                                .limit(1) \
-                                .execute()
-
-                            if banned.data:
-
-                                send_message(
-                                    sender_id,
-                                    "🚫 你的帳號已被停權"
-                                )
-
-                                continue
-
-                            if "text" in msg:
-
-                                text = msg["text"]["body"]
-
-                                if not check_rate_limit(
-                                    sender_id,
-                                    "text"
-                                ):
-
-                                    send_message(
-                                        sender_id,
-                                        "⚠️ 傳送過快，請稍後再試"
-                                    )
-
-                                else:
-
-                                    handle_text(sender_id, text)
-
-                            if "attachments" in msg:
-
-                                attachments = []
-
-                                for att in msg["attachments"]:
-
-                                    attachment_type = att.get("type", "image")
-
-                                    media_url = ""
-
-                                    if "image" in att:
-                                        media_url = att["image"].get("url", "")
-
-                                    elif "video" in att:
-                                        media_url = att["video"].get("url", "")
-
-                                    elif "audio" in att:
-                                        media_url = att["audio"].get("url", "")
-
-                                    attachments.append({
-                                        "type": attachment_type,
-                                        "payload": {
-                                            "url": media_url
-                                        }
-                                    })
-
-                                handle_attachment(
-                                    sender_id,
-                                    attachments
-                                )
 
             print("FULL WEBHOOK:", data)
 
             if "messaging" not in entry:
-                pass
-            else:
+                continue
 
-                for messaging_event in entry["messaging"]:
+            for messaging_event in entry["messaging"]:
 
-                    sender_id = messaging_event["sender"]["id"]
+                sender_id = messaging_event["sender"]["id"]
+                # ===== 選單按鈕 =====
+                if "postback" in messaging_event:
+                
+                    payload = messaging_event["postback"]["payload"]
+                
+                    if payload == "GET_STARTED":
 
-                    # ===== 選單按鈕 =====
-                    if "postback" in messaging_event:
+                        send_help_menu(sender_id)
 
-                        payload = messaging_event["postback"]["payload"]
+                    elif payload == "START_CHAT":
+                
+                        handle_text(sender_id, "開始")
+                
+                    elif payload == "LEAVE_CHAT":
+                
+                        handle_text(sender_id, "離開")
+                
 
-                        if payload == "GET_STARTED":
+                # ===== 一般訊息 =====
+                if "message" in messaging_event:
 
-                            send_help_menu(sender_id)
+                    banned = supabase.table("banned_users") \
+                        .select("*") \
+                        .eq("user_id", sender_id) \
+                        .limit(1) \
+                        .execute()
 
-                        elif payload == "START_CHAT":
+                    if banned.data:
 
-                            handle_text(sender_id, "開始")
+                        send_message(
+                            sender_id,
+                            "🚫 你的帳號已被停權"
+                        )
 
-                        elif payload == "LEAVE_CHAT":
+                        continue
 
-                            handle_text(sender_id, "離開")
+                    message = messaging_event["message"]
 
-                    # ===== 一般訊息 =====
-                    if "message" in messaging_event:
+                    if "text" in message:
 
-                            banned = supabase.table("banned_users") \
-                                .select("*") \
-                                .eq("user_id", sender_id) \
-                                .limit(1) \
-                                .execute()
-                        
-                            if banned.data:
-                                send_message(sender_id, "你已被封鎖")
-                                continue
-                        
-                            message = messaging_event["message"]
-                        
-                            if "text" in message:
-                                text = message["text"]
-                                handle_text(sender_id, text)
-                        
-                            if "attachments" in message:
-                                handle_attachment(sender_id, message["attachments"])
+                        text = message["text"]
+
+                        if not check_rate_limit(
+                            sender_id,
+                            "text"
+                        ):
+
+                            send_message(
+                                sender_id,
+                                "⚠️ 傳送過快，請稍後再試"
+                            )
+
+                        else:
+
+                            handle_text(
+                                sender_id,
+                                text
+                            )
+
+                    if "attachments" in message:
+
+                        handle_attachment(
+                            sender_id,
+                            message["attachments"]
                         )
 
     return "ok", 200
@@ -1514,9 +1463,7 @@ def webhook():
 if __name__ == "__main__":
     setup_persistent_menu()
 
-    port = int(os.environ.get("PORT", 8080))
-
     app.run(
         host="0.0.0.0",
-        port=port
+        port=5000
     )
