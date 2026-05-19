@@ -116,7 +116,7 @@ def get_user_name(user_id):
 
             fb_name = cached.data[0].get("fb_name")
 
-            if fb_name and fb_name != "未知使用者":
+            if fb_name:
 
                 supabase.table("users") \
                     .update({
