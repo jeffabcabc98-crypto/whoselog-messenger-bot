@@ -1377,9 +1377,16 @@ def webhook():
 
     if data["object"] in ["page", "instagram"]:
 
-        for entry in data["entry"]:
-            print("FULL WEBHOOK:", data)
-            for messaging_event in entry["messaging"]:
+    for entry in data["entry"]:
+
+        print("ENTRY:", entry)
+
+        if "changes" in entry:
+            print("INSTAGRAM CHANGES:", entry["changes"])
+
+        print("FULL WEBHOOK:", data)
+
+        for messaging_event in entry["messaging"]:
 
                 sender_id = messaging_event["sender"]["id"]
                 # ===== 選單按鈕 =====
