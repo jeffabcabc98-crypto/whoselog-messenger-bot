@@ -134,6 +134,11 @@ def get_user_name(user_id):
 
         print("GET USER NAME ERROR:", e)
 
+        try:
+            print("FB ERROR RESPONSE:", response.text)
+        except:
+            pass
+
         return "未知使用者"
 
 # =========================
@@ -141,18 +146,28 @@ def get_user_name(user_id):
 # =========================
 def send_message(user_id, text):
 
-    requests.post(
-        "https://graph.facebook.com/v19.0/me/messages",
-        headers={
-            "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "recipient": {"id": user_id},
-            "message": {"text": text}
-        },
-        timeout=15
-    )
+    try:
+
+        response = requests.post(
+            "https://graph.facebook.com/v19.0/me/messages",
+            headers={
+                "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "recipient": {"id": user_id},
+                "message": {"text": text}
+            },
+            timeout=15
+        )
+
+        print("SEND MESSAGE:", response.text)
+
+        response.raise_for_status()
+
+    except Exception as e:
+
+        print("SEND MESSAGE ERROR:", e)
 
 # =========================
 # 功能列表
@@ -186,18 +201,28 @@ def send_help_menu(user_id):
 # =========================
 def send_attachment(user_id, attachment):
 
-    requests.post(
-        "https://graph.facebook.com/v19.0/me/messages",
-        headers={
-            "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "recipient": {"id": user_id},
-            "message": {"attachment": attachment}
-        },
-        timeout=30
-    )
+    try:
+
+        response = requests.post(
+            "https://graph.facebook.com/v19.0/me/messages",
+            headers={
+                "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "recipient": {"id": user_id},
+                "message": {"attachment": attachment}
+            },
+            timeout=30
+        )
+
+        print("SEND ATTACHMENT:", response.text)
+
+        response.raise_for_status()
+
+    except Exception as e:
+
+        print("SEND ATTACHMENT ERROR:", e)
 
 # =========================
 # 附件處理
@@ -284,7 +309,7 @@ def handle_attachment(user_id, attachments):
             )
 
         except Exception as e:
-            print(e)
+            print("ATTACHMENT ERROR:", e)
 
 # =========================
 # 清理聊天室配對
@@ -324,7 +349,7 @@ def clear_chat_pair(user_id):
                 .execute()
 
     except Exception as e:
-        print("HANDLE_TEXT ERROR:", e)
+        print("CLEAR CHAT ERROR:", e)
 
 # =========================
 # 使用者統計初始化
@@ -880,6 +905,8 @@ def handle_text(user_id, text):
                         .delete() \
                         .eq("user_id", user_id) \
                         .execute()
+
+                    clear_chat_pair(user_id)
 
                     send_message(
                         user_id,
