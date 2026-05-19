@@ -1489,49 +1489,24 @@ def webhook():
                     # ===== 一般訊息 =====
                     if "message" in messaging_event:
 
-                        banned = supabase.table("banned_users") \
-                        .select("*") \
-                        .eq("user_id", sender_id) \
-                        .limit(1) \
-                        .execute()
-
-                    if banned.data:
-
-                        send_message(
-                            sender_id,
-                            "🚫 你的帳號已被停權"
-                        )
-
-                        continue
-
-                    message = messaging_event["message"]
-
-                    if "text" in message:
-
-                        text = message["text"]
-
-                        if not check_rate_limit(
-                            sender_id,
-                            "text"
-                        ):
-
-                            send_message(
-                                sender_id,
-                                "⚠️ 傳送過快，請稍後再試"
-                            )
-
-                        else:
-
-                            handle_text(
-                                sender_id,
-                                text
-                            )
-
-                    if "attachments" in message:
-
-                        handle_attachment(
-                            sender_id,
-                            message["attachments"]
+                            banned = supabase.table("banned_users") \
+                                .select("*") \
+                                .eq("user_id", sender_id) \
+                                .limit(1) \
+                                .execute()
+                        
+                            if banned.data:
+                                send_message(sender_id, "你已被封鎖")
+                                continue
+                        
+                            message = messaging_event["message"]
+                        
+                            if "text" in message:
+                                text = message["text"]
+                                handle_text(sender_id, text)
+                        
+                            if "attachments" in message:
+                                handle_attachment(sender_id, message["attachments"])
                         )
 
     return "ok", 200
