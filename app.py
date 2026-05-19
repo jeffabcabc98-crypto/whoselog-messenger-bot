@@ -1378,14 +1378,51 @@ def webhook():
     if data["object"] in ["page", "instagram"]:
 
         for entry in data["entry"]:
-
+        
             print("ENTRY:", entry)
-
+        
+            # =========================
+            # Instagram webhook
+            # =========================
             if "changes" in entry:
+        
                 print("INSTAGRAM CHANGES:", entry["changes"])
-
+        
+                for change in entry["changes"]:
+        
+                    value = change.get("value", {})
+        
+                    if "messages" in value:
+        
+                        for msg in value["messages"]:
+        
+                            sender_id = msg["from"]["id"]
+        
+                            print("IG MESSAGE:", msg)
+        
+                            # 文字
+                            if "text" in msg:
+        
+                                text = msg["text"]
+        
+                                handle_text(
+                                    sender_id,
+                                    text
+                                )
+        
+                            # 附件
+                            if "attachments" in msg:
+        
+                                handle_attachment(
+                                    sender_id,
+                                    msg["attachments"]
+                                )
+        
             print("FULL WEBHOOK:", data)
-
+        
+            # =========================
+            # Facebook Messenger webhook
+            # =========================
             if "messaging" not in entry:
                 continue
 
