@@ -103,106 +103,26 @@ def get_user_name(user_id):
 
     try:
 
-        # =========================
-        # 先查本地資料庫 cache
-        # =========================
-        cached = supabase.table("users") \
-            .select("*") \
-            .eq("user_id", user_id) \
-            .limit(1) \
-            .execute()
-
-        if cached.data:
-
-            fb_name = cached.data[0].get("fb_name")
-
-            if fb_name:
-
-                supabase.table("users") \
-                    .update({
-                        "last_seen": datetime.now(timezone.utc).isoformat()
-                    }) \
-                    .eq("user_id", user_id) \
-                    .execute()
-
-                print("USING CACHED FB NAME:", fb_name)
-
-                return fb_name
-
-        # =========================
-        # 查 Facebook API
-        # =========================
         response = requests.get(
             f"https://graph.facebook.com/v19.0/{user_id}",
             params={
                 "fields": "first_name,last_name,name",
                 "access_token": PAGE_ACCESS_TOKEN
             },
-            timeout=15
+            timeout=10
         )
-
-        response.raise_for_status()
 
         data = response.json()
 
-        print("FB USER API:", data)
-
-        name = (
+        return (
             data.get("name")
             or (
                 data.get("first_name", "") + " " + data.get("last_name", "")
             ).strip()
+            or "未知使用者"
         )
 
-        if not name:
-            name = "未知使用者"
-
-        # =========================
-        # 存入 cache
-        # =========================
-        supabase.table("users").upsert({
-            "user_id": user_id,
-            "fb_name": name,
-            "last_seen": datetime.now(timezone.utc).isoformat()
-        }).execute()
-
-        return name
-
-    except Exception as e:
-
-        print("GET USER NAME ERROR:", e)
-
-        try:
-            print("FB ERROR RESPONSE:", response.text)
-        except:
-            pass
-
-        # =========================
-        # API 失敗時再查 cache
-        # =========================
-        try:
-
-            cached = supabase.table("users") \
-                .select("*") \
-                .eq("user_id", user_id) \
-                .limit(1) \
-                .execute()
-
-            if cached.data:
-
-                fb_name = cached.data[0].get(
-                    "fb_name",
-                    "未知使用者"
-                )
-
-                print("FALLBACK CACHE NAME:", fb_name)
-
-                return fb_name
-
-        except Exception as cache_error:
-
-            print("CACHE FALLBACK ERROR:", cache_error)
-
+    except:
         return "未知使用者"
 
 # =========================
@@ -210,28 +130,18 @@ def get_user_name(user_id):
 # =========================
 def send_message(user_id, text):
 
-    try:
-
-        response = requests.post(
-            "https://graph.facebook.com/v19.0/me/messages",
-            headers={
-                "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "recipient": {"id": user_id},
-                "message": {"text": text}
-            },
-            timeout=15
-        )
-
-        print("SEND MESSAGE:", response.text)
-
-        response.raise_for_status()
-
-    except Exception as e:
-
-        print("SEND MESSAGE ERROR:", e)
+    requests.post(
+        "https://graph.facebook.com/v19.0/me/messages",
+        headers={
+            "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "recipient": {"id": user_id},
+            "message": {"text": text}
+        },
+        timeout=15
+    )
 
 # =========================
 # 功能列表
@@ -240,24 +150,20 @@ def send_help_menu(user_id):
 
     send_message(
         user_id,
-        "🌌 歡迎使用匿名日誌 Whose log\n\n"
-        
-        "📌 功能列表\n\n"
-        
-        "💬 聊天功能\n"
+        "👋 歡迎使用匿名聊天室\n\n"
+        "📌 功能列表：\n\n"
+        "💬 配對功能\n"
         "• 開始 / 0011\n"
+        "• 取消配對 / 0022\n"
         "• 下一位 / 0033\n"
         "• 離開 / 0088\n\n"
-        
-        "🚫 安全功能\n"
+        "🚫 管理功能\n"
         "• 封鎖 / 0099\n"
-        "• 檢舉 / 0066\n"
         "• 黑名單\n"
-        "• 解除封鎖\n\n"
-        
-        "✨ 其他功能\n"
-        "• 取消配對 / 0022\n"
-        "目前還處在開發階段，請各位還手下留情，多多幫小編推廣感激!!"
+        "• 解除封鎖\n"
+        "• 檢舉 / 0066\n\n"
+        "🔓 其他功能\n"
+        "• 解除配對限制 / 2222"
     )
 
 # =========================
@@ -265,28 +171,18 @@ def send_help_menu(user_id):
 # =========================
 def send_attachment(user_id, attachment):
 
-    try:
-
-        response = requests.post(
-            "https://graph.facebook.com/v19.0/me/messages",
-            headers={
-                "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "recipient": {"id": user_id},
-                "message": {"attachment": attachment}
-            },
-            timeout=30
-        )
-
-        print("SEND ATTACHMENT:", response.text)
-
-        response.raise_for_status()
-
-    except Exception as e:
-
-        print("SEND ATTACHMENT ERROR:", e)
+    requests.post(
+        "https://graph.facebook.com/v19.0/me/messages",
+        headers={
+            "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "recipient": {"id": user_id},
+            "message": {"attachment": attachment}
+        },
+        timeout=30
+    )
 
 # =========================
 # 附件處理
@@ -373,7 +269,7 @@ def handle_attachment(user_id, attachments):
             )
 
         except Exception as e:
-            print("ATTACHMENT ERROR:", e)
+            print(e)
 
 # =========================
 # 清理聊天室配對
@@ -413,56 +309,7 @@ def clear_chat_pair(user_id):
                 .execute()
 
     except Exception as e:
-        print("CLEAR CHAT ERROR:", e)
-
-# =========================
-# 使用者統計初始化
-# =========================
-def ensure_user_stats(user_id):
-
-    check = supabase.table("user_stats") \
-        .select("*") \
-        .eq("user_id", user_id) \
-        .limit(1) \
-        .execute()
-
-    if not check.data:
-
-        supabase.table("user_stats").insert({
-            "user_id": user_id
-        }).execute()
-
-# =========================
-# 增加風險分數
-# =========================
-def add_risk_score(
-    user_id,
-    block_add=0,
-    report_add=0,
-    risk_add=0
-):
-
-    ensure_user_stats(user_id)
-
-    current = supabase.table("user_stats") \
-        .select("*") \
-        .eq("user_id", user_id) \
-        .limit(1) \
-        .execute()
-
-    if not current.data:
-        return
-
-    row = current.data[0]
-
-    supabase.table("user_stats") \
-        .update({
-            "block_count": row["block_count"] + block_add,
-            "report_count": row["report_count"] + report_add,
-            "risk_score": row["risk_score"] + risk_add
-        }) \
-        .eq("user_id", user_id) \
-        .execute()
+        print(e)
 
 # =========================
 # 配對
@@ -621,7 +468,7 @@ def handle_text(user_id, text):
             # 確認離開聊天室
             if action == "confirm_leave":
 
-                if text in ["是", "1"]:
+                if text == "是":
 
                     result = supabase.table("chat_pairs") \
                         .select("*") \
@@ -662,7 +509,7 @@ def handle_text(user_id, text):
 
                     return
 
-                if text in ["否", "2"]:
+                if text == "否":
 
                     supabase.table("pending_actions") \
                         .delete() \
@@ -678,7 +525,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
+                    "請輸入：是 或 否"
                 )
 
                 return
@@ -686,7 +533,7 @@ def handle_text(user_id, text):
             # 確認封鎖
             if action == "confirm_block":
 
-                if text in ["是", "1"]:
+                if text == "是":
 
                     result = supabase.table("chat_pairs") \
                         .select("*") \
@@ -730,42 +577,6 @@ def handle_text(user_id, text):
                         "blocked_user_id": partner
                     }).execute()
 
-                    pair_data = supabase.table("chat_pairs") \
-                        .select("*") \
-                        .eq("user_id", user_id) \
-                        .limit(1) \
-                        .execute()
-
-                    reporter_name = "未知使用者"
-                    reported_name = "未知使用者"
-
-                    if pair_data.data:
-
-                        reporter_name = pair_data.data[0].get(
-                            "fb_name",
-                            "未知使用者"
-                        )
-
-                        reported_name = pair_data.data[0].get(
-                            "partner_fb_name",
-                            "未知使用者"
-                        )
-
-                    supabase.table("reports").insert({
-                        "reporter_id": user_id,
-                        "reporter_name": reporter_name,
-                        "reported_user_id": partner,
-                        "reported_name": reported_name,
-                        "reason": "使用者封鎖"
-                    }).execute()
-
-                    add_risk_score(
-                        partner,
-                        block_add=1,
-                        report_add=1,
-                        risk_add=4
-                    )
-
                     clear_chat_pair(user_id)
 
                     send_message(
@@ -782,7 +593,7 @@ def handle_text(user_id, text):
 
                     return
 
-                if text in ["否", "2"]:
+                if text == "否":
 
                     supabase.table("pending_actions") \
                         .delete() \
@@ -798,7 +609,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
+                    "請輸入：是 或 否"
                 )
 
                 return
@@ -807,7 +618,7 @@ def handle_text(user_id, text):
             # 確認下一位
             if action == "confirm_next":
 
-                if text in ["是", "1"]:
+                if text == "是":
 
                     result = supabase.table("chat_pairs") \
                         .select("*") \
@@ -848,7 +659,7 @@ def handle_text(user_id, text):
 
                     return
 
-                if text in ["否", "2"]:
+                if text == "否":
 
                     supabase.table("pending_actions") \
                         .delete() \
@@ -864,7 +675,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
+                    "請輸入：是 或 否"
                 )
 
                 return
@@ -928,12 +739,6 @@ def handle_text(user_id, text):
                     "reason": reason
                 }).execute()
 
-                add_risk_score(
-                    target_user,
-                    report_add=1,
-                    risk_add=3
-                )
-
                 supabase.table("pending_actions") \
                     .delete() \
                     .eq("user_id", user_id) \
@@ -947,7 +752,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "✅ 已送出檢舉\n\n是否要封鎖並離開聊天室？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
+                    "✅ 已送出檢舉\n\n是否要封鎖並離開聊天室？\n請輸入：是 或 否"
                 )
 
                 return
@@ -957,29 +762,7 @@ def handle_text(user_id, text):
 
                 target_user = pending.data[0]["target_user_id"]
 
-                check = supabase.table("blacklist") \
-                    .select("*") \
-                    .eq("user_id", user_id) \
-                    .eq("blocked_user_id", target_user) \
-                    .execute()
-
-                if check.data:
-
-                    supabase.table("pending_actions") \
-                        .delete() \
-                        .eq("user_id", user_id) \
-                        .execute()
-
-                    clear_chat_pair(user_id)
-
-                    send_message(
-                        user_id,
-                        "⚠️ 你已經封鎖過此人"
-                    )
-
-                    return
-
-                if text in ["是", "1"]:
+                if text == "是":
 
                     supabase.table("pending_actions") \
                         .delete() \
@@ -990,7 +773,6 @@ def handle_text(user_id, text):
                         "user_id": user_id,
                         "blocked_user_id": target_user
                     }).execute()
-
                     clear_chat_pair(user_id)
 
                     send_message(
@@ -1008,7 +790,7 @@ def handle_text(user_id, text):
 
                     return
 
-                if text in ["否", "2"]:
+                if text == "否":
 
                     supabase.table("pending_actions") \
                         .delete() \
@@ -1024,7 +806,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
+                    "請輸入：是 或 否"
                 )
 
                 return
@@ -1094,7 +876,7 @@ def handle_text(user_id, text):
 
             send_message(
                 user_id,
-                "⚠️ 確定要離開目前聊天室並尋找下一位嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
+                "⚠️ 確定要離開目前聊天室並尋找下一位嗎？\n請輸入：是 或 否"
             )
 
             return
@@ -1129,7 +911,7 @@ def handle_text(user_id, text):
 
             send_message(
                 user_id,
-                "⚠️ 確定要離開聊天室嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
+                "⚠️ 確定要離開聊天室嗎？\n請輸入：是 或 否"
             )
 
             return
@@ -1181,7 +963,7 @@ def handle_text(user_id, text):
 
             send_message(
                 user_id,
-                "⚠️ 確定要封鎖對方嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
+                "⚠️ 確定要封鎖對方嗎？\n請輸入：是 或 否"
             )
 
             return
@@ -1351,7 +1133,7 @@ def handle_text(user_id, text):
             send_help_menu(user_id)
 
     except Exception as e:
-        print("HANDLE_TEXT ERROR:", e)
+        print(e)
 
 # =========================
 # Webhook 驗證
@@ -1375,19 +1157,9 @@ def webhook():
 
     data = request.json
 
-    if data["object"] in ["page", "instagram"]:
+    if data.get("object") == "page":
 
         for entry in data["entry"]:
-
-            print("ENTRY:", entry)
-
-            if "changes" in entry:
-                print("INSTAGRAM CHANGES:", entry["changes"])
-
-            print("FULL WEBHOOK:", data)
-
-            if "messaging" not in entry:
-                continue
 
             for messaging_event in entry["messaging"]:
 
@@ -1399,7 +1171,15 @@ def webhook():
                 
                     if payload == "GET_STARTED":
 
-                        send_help_menu(sender_id)
+                        send_message(
+                            sender_id,
+                            "👋 歡迎使用匿名聊天室\n\n"
+                            "📌 指令：\n"
+                            "• 開始 / 0011\n"
+                            "• 下一位 / 0033\n"
+                            "• 離開 / 0088\n"
+                            "• 檢舉 / 0066"
+                        )
 
                     elif payload == "START_CHAT":
                 
@@ -1460,9 +1240,9 @@ def webhook():
 
     return "ok", 200
 
-if __name__ == "__main__":
-    setup_persistent_menu()
+setup_persistent_menu()
 
+if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=5000
