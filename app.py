@@ -2,7 +2,7 @@ from flask import Flask, request
 import os
 import requests
 def setup_persistent_menu():
-    url = f"https://graph.facebook.com/v19.0/me/messenger_profile?access_token={PAGE_ACCESS_TOKEN}"
+    url = f"https://graph.facebook.com/v25.0/me/messenger_profile?access_token={PAGE_ACCESS_TOKEN}"
 
     data = {
 
