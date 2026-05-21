@@ -1,38 +1,6 @@
 from flask import Flask, request
 import os
 import requests
-def setup_persistent_menu():
-    url = f"https://graph.facebook.com/v25.0/me/messenger_profile?access_token={PAGE_ACCESS_TOKEN}"
-
-    data = {
-
-        "get_started": {
-            "payload": "GET_STARTED"
-        },
-
-        "persistent_menu": [
-            {
-                "locale": "default",
-                "composer_input_disabled": False,
-                "call_to_actions": [
-                    {
-                        "type": "postback",
-                        "title": "開始配對",
-                        "payload": "START_CHAT"
-                    },
-                    {
-                        "type": "postback",
-                        "title": "離開聊天室",
-                        "payload": "LEAVE_CHAT"
-                    },
-                ]
-            }
-        ]
-    }
-
-    response = requests.post(url, json=data)
-    print("MENU API RESPONSE:", response.text)
-    
 import random
 from datetime import datetime, timedelta, timezone
 from supabase import create_client
