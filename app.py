@@ -1205,7 +1205,7 @@ def handle_text(user_id, text):
 
                 msg += f"{i}. 使用者 {row['blocked_user_id'][-6:]}\n"
 
-            msg += "\n例如：1"
+            msg += "\n例如：解除封鎖 1"
 
             send_message(user_id, msg)
 
