@@ -56,13 +56,13 @@ def check_rate_limit(user_id, msg_type):
 # =========================
 # 暱稱
 # =========================
-nickname_1 = ["星","月","白","夜","風","雨","雪","海","雲","光"]
-nickname_2 = ["空","辰","羽","夜","風","語","海","夢","森","歌"]
-emoji_list = ["🌙","⭐","🍀","🌸","☁️","🔥","🦋","🌊","❄️","✨"]
+nickname_1 = ["星","月","白","夜","風","雨","雪","海","雲","光","石","黑","影","安","亮"]
+nickname_2 = ["空","辰","羽","夜","風","語","海","夢","森","歌","固","晨","霧","悟","凸"]
+
 
 def generate_nickname():
 
-    return f"{random.choice(emoji_list)} {random.choice(nickname_1)}{random.choice(nickname_2)}"
+    return f"{random.choice(nickname_1)}{random.choice(nickname_2)}"
 
 # =========================
 # FB 名稱
