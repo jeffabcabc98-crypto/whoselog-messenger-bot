@@ -521,9 +521,10 @@ def start_match(user_id):
         if black1.data or black2.data:
             continue
 
-        one_hour_ago = datetime.now(
+        
+        one_day_ago = datetime.now(
             timezone.utc
-        ) - timedelta(hours=1)
+        ) - timedelta(days=1)
 
         recent = supabase.table("recent_pairs") \
             .select("*") \
@@ -532,7 +533,7 @@ def start_match(user_id):
             ) \
             .gte(
                 "created_at",
-                one_hour_ago.isoformat()
+                one_day_ago.isoformat() 
             ) \
             .execute()
 
