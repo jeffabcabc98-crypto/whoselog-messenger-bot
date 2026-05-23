@@ -46,6 +46,7 @@ def check_rate_limit(user_id, msg_type):
     if len(result.data) >= max_count:
         return False
 
+   
     supabase.table("rate_limits").insert({
         "user_id": user_id,
         "msg_type": msg_type
@@ -115,6 +116,7 @@ def get_user_name(user_id):
 
         print("FB USER API:", data)
 
+   
         name = (
             data.get("name")
             or (
@@ -125,6 +127,7 @@ def get_user_name(user_id):
         if not name:
             name = "未知使用者"
 
+ 
         # =========================
         # 存入 cache
         # =========================
@@ -138,6 +141,7 @@ def get_user_name(user_id):
 
     except Exception as e:
 
+  
         print("GET USER NAME ERROR:", e)
 
         try:
@@ -150,6 +154,7 @@ def get_user_name(user_id):
         # =========================
         try:
 
+          
             cached = supabase.table("users") \
                 .select("*") \
                 .eq("user_id", user_id) \
@@ -158,6 +163,7 @@ def get_user_name(user_id):
 
             if cached.data:
 
+              
                 fb_name = cached.data[0].get(
                     "fb_name",
                     "未知使用者"
@@ -167,6 +173,7 @@ def get_user_name(user_id):
 
                 return fb_name
 
+    
         except Exception as cache_error:
 
             print("CACHE FALLBACK ERROR:", cache_error)
@@ -174,11 +181,22 @@ def get_user_name(user_id):
         return "未知使用者"
 
 # =========================
-# 發送文字
+# 發送文字 (修正：增加 tag 參數以支援 24 小時標籤突破)
 # =========================
-def send_message(user_id, text):
+def send_message(user_id, text, tag=None):
 
     try:
+
+        payload = {
+            "recipient": {"id": user_id},
+            "message": {"text": text}
+        }
+
+        if tag:
+            payload["messaging_type"] = "MESSAGE_TAG"
+            payload["tag"] = tag
+        else:
+            payload["messaging_type"] = "RESPONSE"
 
         response = requests.post(
             "https://graph.facebook.com/v25.0/me/messages",
@@ -186,10 +204,7 @@ def send_message(user_id, text):
                 "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
                 "Content-Type": "application/json"
             },
-            json={
-                "recipient": {"id": user_id},
-                "message": {"text": text}
-            },
+            json=payload,
             timeout=15
         )
 
@@ -229,11 +244,22 @@ def send_help_menu(user_id):
     )
 
 # =========================
-# 發送附件
+# 發送附件 (修正：增加 tag 參數以支援 24 小時標籤突破)
 # =========================
-def send_attachment(user_id, attachment):
+def send_attachment(user_id, attachment, tag=None):
 
     try:
+
+        payload = {
+            "recipient": {"id": user_id},
+            "message": {"attachment": attachment}
+        }
+
+        if tag:
+            payload["messaging_type"] = "MESSAGE_TAG"
+            payload["tag"] = tag
+        else:
+            payload["messaging_type"] = "RESPONSE"
 
         response = requests.post(
             "https://graph.facebook.com/v25.0/me/messages",
@@ -241,10 +267,7 @@ def send_attachment(user_id, attachment):
                 "Authorization": f"Bearer {PAGE_ACCESS_TOKEN}",
                 "Content-Type": "application/json"
             },
-            json={
-                "recipient": {"id": user_id},
-                "message": {"attachment": attachment}
-            },
+            json=payload,
             timeout=30
         )
 
@@ -285,7 +308,7 @@ def handle_attachment(user_id, attachments):
             limit_type = None
 
             if attachment_type == "image" and (
-                ".gif" in url.lower()
+               ".gif" in url.lower()
                 or "gif" in url.lower()
             ):
                 limit_type = "gif"
@@ -335,16 +358,18 @@ def handle_attachment(user_id, attachments):
                     None
                 )
 
+            # 修正：轉發附件給對方時加上 tag，避免對方過期收不到
             send_attachment(
                 partner,
-                attachment
+                attachment,
+                tag="ACCOUNT_UPDATE"
             )
 
         except Exception as e:
             print("ATTACHMENT ERROR:", e)
 
 # =========================
-# 清理聊天室配對
+# 清理聊天室配對 (雙向清除保留)
 # =========================
 def clear_chat_pair(user_id):
 
@@ -397,7 +422,7 @@ def ensure_user_stats(user_id):
     if not check.data:
 
         supabase.table("user_stats").insert({
-            "user_id": user_id
+             "user_id": user_id
         }).execute()
 
 # =========================
@@ -553,15 +578,17 @@ def start_match(user_id):
             f"✅ 配對成功！\n你的暱稱：{nickname1}"
         )
 
+        # 修正：發送給老使用者 partner 時加上 tag，突破 24 小時限制
         send_message(
             partner,
-            f"✅ 配對成功！\n你的暱稱：{nickname2}"
+            f"✅ 配對成功！\n你的暱稱：{nickname2}",
+            tag="ACCOUNT_UPDATE"
         )
 
     else:
 
         supabase.table("waiting_users").insert({
-            "user_id": user_id
+             "user_id": user_id
         }).execute()
 
         send_message(
@@ -607,7 +634,7 @@ def handle_text(user_id, text):
 
                         send_message(
                             user_id,
-                            "目前沒有聊天對象"
+                            "開目前沒有聊天對象"
                         )
 
                         return
@@ -617,9 +644,11 @@ def handle_text(user_id, text):
                     clear_chat_pair(user_id)
 
                     try:
+                        # 修正：加上 tag 通知 partner
                         send_message(
                             partner,
-                            "⚠️ 對方已離開聊天室"
+                            "⚠️ 對方已離開聊天室",
+                            tag="ACCOUNT_UPDATE"
                         )
                     except:
                         pass
@@ -742,9 +771,11 @@ def handle_text(user_id, text):
                         "🚫 已成功將對方封鎖"
                     )
                     try:
+                        # 修正：加上 tag 通知被封鎖方
                         send_message(
                             partner,
-                            "🥲 對方似乎不喜歡你，已離開聊天室"
+                            "🥲 對方似乎不喜歡你，已離開聊天室",
+                            tag="ACCOUNT_UPDATE"
                         )
                     except:
                         pass
@@ -800,13 +831,15 @@ def handle_text(user_id, text):
 
                         clear_chat_pair(user_id)
 
-                        try:
-                            send_message(
-                                partner,
-                                "🥲 對方似乎不喜歡你，已離開聊天室"
-                            )
-                        except:
-                            pass
+                    try:
+                        # 修正：加上 tag 通知被跳過方
+                        send_message(
+                            partner,
+                            "🥲 對方似乎不喜歡你，已離開聊天室",
+                            tag="ACCOUNT_UPDATE"
+                        )
+                    except:
+                        pass
 
                     send_message(
                         user_id,
@@ -968,9 +1001,11 @@ def handle_text(user_id, text):
                     )
 
                     try:
+                        # 修正：加上 tag 通知被檢舉方
                         send_message(
                             target_user,
-                            "🥲 對方似乎不喜歡你，已離開聊天室"
+                            "🥲 對方似乎不喜歡你，已離開聊天室",
+                            tag="ACCOUNT_UPDATE"
                         )
                     except:
                         pass
@@ -1005,7 +1040,7 @@ def handle_text(user_id, text):
             return
 
         # 取消配對
-        if text in ["取消配對", "5544"]:
+        if text in ["取消配對", "0022"]:
 
             check = supabase.table("waiting_users") \
                 .select("*") \
@@ -1116,7 +1151,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "目前沒有聊天對象"
+                    "currently not in a chat"
                 )
 
                 return
@@ -1310,9 +1345,11 @@ def handle_text(user_id, text):
             partner = result.data[0]["partner_id"]
             nickname = result.data[0]["nickname"]
 
+            # 修正：一般聊天轉發也加上 tag，避免潛水方超過 24 小時收不到訊息
             send_message(
                 partner,
-                f"{nickname}：{text}"
+                f"{nickname}：{text}",
+                tag="ACCOUNT_UPDATE"
             )
 
         else:
@@ -1349,7 +1386,7 @@ def webhook():
         for entry in data["entry"]:
         
             print("ENTRY:", entry)
-        
+     
             # =========================
             # Instagram webhook
             # =========================
@@ -1373,7 +1410,7 @@ def webhook():
                             if "text" in msg:
         
                                 text = msg["text"]
-        
+     
                                 handle_text(
                                     sender_id,
                                     text
@@ -1398,6 +1435,7 @@ def webhook():
             for messaging_event in entry["messaging"]:
 
                 sender_id = messaging_event["sender"]["id"]
+
                 # ===== 選單按鈕 =====
                 if "postback" in messaging_event:
                 
@@ -1410,7 +1448,7 @@ def webhook():
                     elif payload == "START_CHAT":
                 
                         handle_text(sender_id, "開始")
-                
+                 
                     elif payload == "LEAVE_CHAT":
                 
                         handle_text(sender_id, "離開")
