@@ -5,6 +5,9 @@ import random
 from datetime import datetime, timedelta, timezone
 from supabase import create_client
 
+# ======= 【新增：匯入終極密碼遊戲模組】 =======
+from number_bomb import start_ultimate_password, handle_guess
+# ==========================================
 
 app = Flask(__name__)
 
@@ -181,7 +184,7 @@ def get_user_name(user_id):
         return "未知使用者"
 
 # =========================
-# 發送文字 (修正：增加 tag 參數以支援 24 小時標籤突破)
+# 發送文字 (修正：加入 tag 參數以支援 24 小時破除限制)
 # =========================
 def send_message(user_id, text, tag=None):
 
@@ -244,7 +247,7 @@ def send_help_menu(user_id):
     )
 
 # =========================
-# 發送附件 (修正：增加 tag 參數以支援 24 小時標籤突破)
+# 發送附件 (修正：加入 tag 參數以支援 24 小時破除限制)
 # =========================
 def send_attachment(user_id, attachment, tag=None):
 
@@ -273,6 +276,7 @@ def send_attachment(user_id, attachment, tag=None):
 
         print("SEND ATTACHMENT:", response.text)
 
+   
         response.raise_for_status()
 
     except Exception as e:
@@ -297,6 +301,7 @@ def handle_attachment(user_id, attachments):
 
     partner = result.data[0]["partner_id"]
 
+ 
     for attachment in attachments:
 
         try:
@@ -316,6 +321,7 @@ def handle_attachment(user_id, attachments):
             elif attachment_type == "image":
                 limit_type = "image"
 
+          
             elif attachment_type == "video":
                 limit_type = "video"
 
@@ -345,11 +351,13 @@ def handle_attachment(user_id, attachments):
                         "audio": "⚠️ 語音傳送過快"
                     }
 
+      
                     send_message(
                         user_id,
                         msgs[limit_type]
                     )
 
+                  
                     continue
 
             if "payload" in attachment:
@@ -358,6 +366,7 @@ def handle_attachment(user_id, attachments):
                     None
                 )
 
+           
             # 修正：轉發附件給對方時加上 tag，避免對方過期收不到
             send_attachment(
                 partner,
@@ -369,7 +378,7 @@ def handle_attachment(user_id, attachments):
             print("ATTACHMENT ERROR:", e)
 
 # =========================
-# 清理聊天室配對 (雙向清除保留)
+# 清理聊天室配對 (雙向刪除原封不動完整保留)
 # =========================
 def clear_chat_pair(user_id):
 
@@ -395,6 +404,7 @@ def clear_chat_pair(user_id):
                 .or_(f"user_id.eq.{partner},partner_id.eq.{partner}") \
                 .execute()
 
+          
             supabase.table("waiting_users") \
                 .delete() \
                 .or_(f"user_id.eq.{user_id},user_id.eq.{partner}") \
@@ -446,6 +456,7 @@ def add_risk_score(
     if not current.data:
         return
 
+  
     row = current.data[0]
 
     supabase.table("user_stats") \
@@ -538,6 +549,7 @@ def start_match(user_id):
 
     if partner:
 
+    
         supabase.table("waiting_users") \
             .delete() \
             .eq("user_id", partner) \
@@ -550,6 +562,7 @@ def start_match(user_id):
         fb_name2 = get_user_name(partner)
 
         supabase.table("chat_pairs").insert([
+        
             {
                 "user_id": user_id,
                 "partner_id": partner,
@@ -573,12 +586,13 @@ def start_match(user_id):
             "user2": partner
         }).execute()
 
+      
         send_message(
             user_id,
             f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n你的暱稱：{nickname1}"
         )
 
-        # 修正：發送給老使用者 partner 時加上 tag，突破 24 小時限制
+        # 修正：發送給等待中的老使用者 partner 時加上 tag，突破 24 小時限制
         send_message(
             partner,
             f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n你的暱稱：{nickname2}",
@@ -604,6 +618,20 @@ def handle_text(user_id, text):
     text = text.strip()
 
     try:
+
+        # ======= 【新增：終極密碼小遊戲關鍵字觸發】 =======
+        if text == "終極密碼":
+            result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
+            if result.data:
+                partner = result.data[0]["partner_id"]
+                nickname1 = result.data[0]["nickname"]
+                nickname2 = result.data[0]["partner_nickname"]
+                start_ultimate_password(user_id, partner, nickname1, nickname2)
+                return
+            else:
+                send_message(user_id, "⚠️ 必須在聊天對話中才能開始遊戲喔！")
+                return
+        # ===============================================
 
         pending = supabase.table("pending_actions") \
             .select("*") \
@@ -634,7 +662,7 @@ def handle_text(user_id, text):
 
                         send_message(
                             user_id,
-                            "開目前沒有聊天對象"
+                            "目前沒有聊天對象"
                         )
 
                         return
@@ -644,7 +672,7 @@ def handle_text(user_id, text):
                     clear_chat_pair(user_id)
 
                     try:
-                        # 修正：加上 tag 通知 partner
+                        # 修正：通知對方時加上 tag
                         send_message(
                             partner,
                             "⚠️ 對方已離開聊天室",
@@ -771,7 +799,7 @@ def handle_text(user_id, text):
                         "🚫 已成功將對方封鎖"
                     )
                     try:
-                        # 修正：加上 tag 通知被封鎖方
+                        # 修正：通知對方時加上 tag
                         send_message(
                             partner,
                             "🥲 對方似乎不喜歡你，已離開聊天室",
@@ -832,7 +860,7 @@ def handle_text(user_id, text):
                         clear_chat_pair(user_id)
 
                     try:
-                        # 修正：加上 tag 通知被跳過方
+                        # 修正：通知對方時加上 tag
                         send_message(
                             partner,
                             "🥲 對方似乎不喜歡你，已離開聊天室",
@@ -1001,7 +1029,7 @@ def handle_text(user_id, text):
                     )
 
                     try:
-                        # 修正：加上 tag 通知被檢舉方
+                        # 修正：通知對方時加上 tag
                         send_message(
                             target_user,
                             "🥲 對方似乎不喜歡你，已離開聊天室",
@@ -1308,7 +1336,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "目前沒有聊天對象"
+                    "currently not in a chat"
                 )
 
                 return
@@ -1344,8 +1372,15 @@ def handle_text(user_id, text):
 
             partner = result.data[0]["partner_id"]
             nickname = result.data[0]["nickname"]
+            partner_nickname = result.data[0]["partner_nickname"]
 
-            # 修正：一般聊天轉發也加上 tag，避免潛水方超過 24 小時收不到訊息
+            # ======= 【新增：優先攔截猜數字遊戲判定】 =======
+            # 如果符合猜數字格式，訊息將被遊戲吃掉，不往下執行聊天轉發
+            if handle_guess(user_id, text, partner, nickname, partner_nickname):
+                return
+            # =============================================
+
+            # 修正：一般對話也加上 tag 轉發，避免雙方其中一人潛水超過 24 小時收不到訊息
             send_message(
                 partner,
                 f"{nickname}：{text}",
