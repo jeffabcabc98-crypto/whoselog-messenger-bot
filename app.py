@@ -247,7 +247,7 @@ def send_help_menu(user_id):
     )
 
 # =========================
-# 發送附件 (修正：加入 tag 參數以支援 24 小時破除限制)
+# 發送附件
 # =========================
 def send_attachment(user_id, attachment, tag=None):
 
@@ -276,7 +276,6 @@ def send_attachment(user_id, attachment, tag=None):
 
         print("SEND ATTACHMENT:", response.text)
 
-   
         response.raise_for_status()
 
     except Exception as e:
@@ -301,7 +300,6 @@ def handle_attachment(user_id, attachments):
 
     partner = result.data[0]["partner_id"]
 
- 
     for attachment in attachments:
 
         try:
@@ -321,7 +319,6 @@ def handle_attachment(user_id, attachments):
             elif attachment_type == "image":
                 limit_type = "image"
 
-          
             elif attachment_type == "video":
                 limit_type = "video"
 
@@ -351,13 +348,11 @@ def handle_attachment(user_id, attachments):
                         "audio": "⚠️ 語音傳送過快"
                     }
 
-      
                     send_message(
                         user_id,
                         msgs[limit_type]
                     )
 
-                  
                     continue
 
             if "payload" in attachment:
@@ -366,8 +361,7 @@ def handle_attachment(user_id, attachments):
                     None
                 )
 
-           
-            # 轉發附件給對方時加上 tag，避免對方過期收不到
+            # 轉發附件給對方時加上 tag
             send_attachment(
                 partner,
                 attachment,
@@ -378,7 +372,7 @@ def handle_attachment(user_id, attachments):
             print("ATTACHMENT ERROR:", e)
 
 # =========================
-# 清理聊天室配對 (雙向刪除原封不動完整保留)
+# 清理聊天室配對
 # =========================
 def clear_chat_pair(user_id):
 
@@ -404,7 +398,6 @@ def clear_chat_pair(user_id):
                 .or_(f"user_id.eq.{partner},partner_id.eq.{partner}") \
                 .execute()
 
-          
             supabase.table("waiting_users") \
                 .delete() \
                 .or_(f"user_id.eq.{user_id},user_id.eq.{partner}") \
@@ -456,9 +449,9 @@ def add_risk_score(
     if not current.data:
         return
 
-  
     row = current.data[0]
 
+  
     supabase.table("user_stats") \
         .update({
             "block_count": row["block_count"] + block_add,
@@ -504,6 +497,7 @@ def start_match(user_id):
         .neq("user_id", user_id) \
         .execute()
 
+   
     partner = None
 
     for row in waiting_users.data:
@@ -549,7 +543,6 @@ def start_match(user_id):
 
     if partner:
 
-    
         supabase.table("waiting_users") \
             .delete() \
             .eq("user_id", partner) \
@@ -562,7 +555,6 @@ def start_match(user_id):
         fb_name2 = get_user_name(partner)
 
         supabase.table("chat_pairs").insert([
-        
             {
                 "user_id": user_id,
                 "partner_id": partner,
@@ -586,19 +578,19 @@ def start_match(user_id):
             "user2": partner
         }).execute()
 
-      
         send_message(
             user_id,
-            f"✅ 配對成功！\n你的暱稱：{nickname1}"
+            f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n你的暱稱：{nickname1}"
         )
 
-        # 發送給等待中的老使用者 partner 時加上 tag，突破 24 小時限制
+        # 修正：發送給老使用者 partner 時加上 tag，突破 24 小時限制
         send_message(
             partner,
-            f"✅ 配對成功！\n你的暱稱：{nickname2}",
+            f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n你的暱稱：{nickname2}",
             tag="ACCOUNT_UPDATE"
         )
 
+    
     else:
 
         supabase.table("waiting_users").insert({
@@ -619,7 +611,7 @@ def handle_text(user_id, text):
 
     try:
 
-        # ======= 【終極密碼小遊戲關鍵字觸發】 =======
+        # ======= 【新增：終極密碼小遊戲關鍵字觸發】 =======
         if text == "終極密碼":
             result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
             if result.data:
@@ -662,16 +654,18 @@ def handle_text(user_id, text):
 
                         send_message(
                             user_id,
-                            "目前沒有聊天對象"
+                            "開目前沒有聊天對象"
                         )
 
                         return
 
+           
                     partner = result.data[0]["partner_id"]
 
                     clear_chat_pair(user_id)
 
                     try:
+                        # 修正：加上 tag 通知 partner
                         send_message(
                             partner,
                             "⚠️ 對方已離開聊天室",
@@ -689,11 +683,13 @@ def handle_text(user_id, text):
 
                 if text in ["否", "2"]:
 
+               
                     supabase.table("pending_actions") \
                         .delete() \
                         .eq("user_id", user_id) \
                         .execute()
 
+                   
                     send_message(
                         user_id,
                         "✅ 已取消離開聊天室"
@@ -701,6 +697,7 @@ def handle_text(user_id, text):
 
                     return
 
+          
                 send_message(
                     user_id,
                     "請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
@@ -728,11 +725,12 @@ def handle_text(user_id, text):
 
                         send_message(
                             user_id,
-                            "目前沒有聊天對象"
+                            "currently not in a chat"
                         )
 
                         return
 
+ 
                     partner = result.data[0]["partner_id"]
 
                     check = supabase.table("blacklist") \
@@ -750,11 +748,13 @@ def handle_text(user_id, text):
 
                         return
 
+     
                     supabase.table("blacklist").insert({
                         "user_id": user_id,
                         "blocked_user_id": partner
                     }).execute()
 
+               
                     pair_data = supabase.table("chat_pairs") \
                         .select("*") \
                         .eq("user_id", user_id) \
@@ -771,11 +771,13 @@ def handle_text(user_id, text):
                             "未知使用者"
                         )
 
+                     
                         reported_name = pair_data.data[0].get(
                             "partner_fb_name",
                             "未知使用者"
                         )
 
+               
                     supabase.table("reports").insert({
                         "reporter_id": user_id,
                         "reporter_name": reporter_name,
@@ -791,13 +793,16 @@ def handle_text(user_id, text):
                         risk_add=4
                     )
 
+              
                     clear_chat_pair(user_id)
 
                     send_message(
                         user_id,
                         "🚫 已成功將對方封鎖"
                     )
+     
                     try:
+                        # 修正：加上 tag 通知被封鎖方
                         send_message(
                             partner,
                             "🥲 對方似乎不喜歡你，已離開聊天室",
@@ -833,6 +838,7 @@ def handle_text(user_id, text):
             # 確認下一位
             if action == "confirm_next":
 
+    
                 if text in ["是", "1"]:
 
                     result = supabase.table("chat_pairs") \
@@ -850,14 +856,17 @@ def handle_text(user_id, text):
 
                         partner = result.data[0]["partner_id"]
 
+                  
                         supabase.table("recent_pairs").insert({
                             "user1": user_id,
                             "user2": partner
                         }).execute()
 
+            
                         clear_chat_pair(user_id)
 
                     try:
+                        # 修正：加上 tag 通知被跳過方
                         send_message(
                             partner,
                             "🥲 對方似乎不喜歡你，已離開聊天室",
@@ -877,11 +886,13 @@ def handle_text(user_id, text):
 
                 if text in ["否", "2"]:
 
+               
                     supabase.table("pending_actions") \
                         .delete() \
                         .eq("user_id", user_id) \
                         .execute()
 
+                   
                     send_message(
                         user_id,
                         "✅ 已取消尋找下一位"
@@ -889,6 +900,7 @@ def handle_text(user_id, text):
 
                     return
 
+          
                 send_message(
                     user_id,
                     "請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
@@ -919,6 +931,7 @@ def handle_text(user_id, text):
 
                 if not reason:
 
+            
                     send_message(
                         user_id,
                         "⚠️ 請輸入檢舉原因"
@@ -926,6 +939,7 @@ def handle_text(user_id, text):
 
                     return
 
+   
                 pair_data = supabase.table("chat_pairs") \
                     .select("*") \
                     .eq("user_id", user_id) \
@@ -992,11 +1006,13 @@ def handle_text(user_id, text):
 
                 if check.data:
 
+   
                     supabase.table("pending_actions") \
                         .delete() \
                         .eq("user_id", user_id) \
                         .execute()
 
+       
                     clear_chat_pair(user_id)
 
                     send_message(
@@ -1006,7 +1022,7 @@ def handle_text(user_id, text):
 
                     return
 
-                if text in ["是", "1"]:
+                if text in ["`是`", "1"]:
 
                     supabase.table("pending_actions") \
                         .delete() \
@@ -1026,6 +1042,7 @@ def handle_text(user_id, text):
                     )
 
                     try:
+                        # 修正：加上 tag 通知被檢舉方
                         send_message(
                             target_user,
                             "🥲 對方似乎不喜歡你，已離開聊天室",
@@ -1043,11 +1060,13 @@ def handle_text(user_id, text):
                         .eq("user_id", user_id) \
                         .execute()
 
+   
                     send_message(
                         user_id,
                         "✅ 已完成檢舉"
                     )
 
+              
                     return
 
                 send_message(
@@ -1057,6 +1076,7 @@ def handle_text(user_id, text):
 
                 return
 
+  
         # 開始
         if text in ["開始", "0011"]:
 
@@ -1085,6 +1105,7 @@ def handle_text(user_id, text):
                 .eq("user_id", user_id) \
                 .execute()
 
+   
             send_message(
                 user_id,
                 "✅ 已取消配對"
@@ -1120,6 +1141,7 @@ def handle_text(user_id, text):
                 "action": "confirm_next"
             }).execute()
 
+      
             send_message(
                 user_id,
                 "⚠️ 確定要離開目前聊天室並尋找下一位嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
@@ -1138,6 +1160,7 @@ def handle_text(user_id, text):
 
             if not result.data:
 
+               
                 send_message(
                     user_id,
                     "currently not in a chat"
@@ -1155,6 +1178,7 @@ def handle_text(user_id, text):
                 "action": "confirm_leave"
             }).execute()
 
+     
             send_message(
                 user_id,
                 "⚠️ 確定要離開聊天室嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否"
@@ -1165,6 +1189,7 @@ def handle_text(user_id, text):
         # 封鎖
         if text in ["封鎖", "0099"]:
 
+           
             result = supabase.table("chat_pairs") \
                 .select("*") \
                 .eq("user_id", user_id) \
@@ -1173,6 +1198,7 @@ def handle_text(user_id, text):
 
             if not result.data:
 
+              
                 send_message(
                     user_id,
                     "currently not in a chat"
@@ -1182,6 +1208,7 @@ def handle_text(user_id, text):
 
             partner = result.data[0]["partner_id"]
 
+        
             check = supabase.table("blacklist") \
                 .select("*") \
                 .eq("user_id", user_id) \
@@ -1190,6 +1217,7 @@ def handle_text(user_id, text):
 
             if check.data:
 
+           
                 send_message(
                     user_id,
                     "⚠️ 你已經封鎖過此人"
@@ -1217,6 +1245,7 @@ def handle_text(user_id, text):
         # 黑名單
         if text == "黑名單":
 
+       
             result = supabase.table("blacklist") \
                 .select("*") \
                 .eq("user_id", user_id) \
@@ -1256,6 +1285,7 @@ def handle_text(user_id, text):
                     "📭 目前沒有封鎖任何人"
                 )
 
+ 
                 return
 
             msg = "🔓 請輸入要解除封鎖的編號\n\n"
@@ -1275,6 +1305,7 @@ def handle_text(user_id, text):
 
             try:
                 index = int(text.split()[1]) - 1
+        
             except:
                 send_message(user_id, "❌ 格式錯誤")
                 return
@@ -1322,6 +1353,7 @@ def handle_text(user_id, text):
         # 檢舉
         if text in ["檢舉", "0066"]:
 
+    
             result = supabase.table("chat_pairs") \
                 .select("*") \
                 .eq("user_id", user_id) \
@@ -1330,6 +1362,7 @@ def handle_text(user_id, text):
 
             if not result.data:
 
+       
                 send_message(
                     user_id,
                     "currently not in a chat"
@@ -1339,6 +1372,7 @@ def handle_text(user_id, text):
 
             partner = result.data[0]["partner_id"]
 
+     
             supabase.table("pending_actions") \
                 .delete() \
                 .eq("user_id", user_id) \
@@ -1355,6 +1389,7 @@ def handle_text(user_id, text):
                 "🚨 請輸入檢舉原因\n\n如果不想檢舉了請輸入：返回"
             )
 
+         
             return
 
         # 聊天轉發
@@ -1375,7 +1410,7 @@ def handle_text(user_id, text):
                 return
             # =============================================
 
-            # 一般對話也加上 tag 轉發，避免雙方其中一人潛水超過 24 小時收不到訊息
+            # 修正：一般聊天轉發也加上 tag，避免潛水方超過 24 小時收不到訊息
             send_message(
                 partner,
                 f"{nickname}：{text}",
@@ -1413,6 +1448,7 @@ def webhook():
 
     if data["object"] in ["page", "instagram"]:
 
+     
         for entry in data["entry"]:
         
             print("ENTRY:", entry)
@@ -1422,6 +1458,7 @@ def webhook():
             # =========================
             if "changes" in entry:
         
+     
                 print("INSTAGRAM CHANGES:", entry["changes"])
         
                 for change in entry["changes"]:
@@ -1434,11 +1471,13 @@ def webhook():
         
                             sender_id = msg["from"]["id"]
         
+                 
                             print("IG MESSAGE:", msg)
         
                             # 文字
                             if "text" in msg:
         
+           
                                 text = msg["text"]
      
                                 handle_text(
@@ -1455,6 +1494,7 @@ def webhook():
                                 )
         
             print("FULL WEBHOOK:", data)
+  
         
             # =========================
             # Facebook Messenger webhook
@@ -1464,25 +1504,27 @@ def webhook():
 
             for messaging_event in entry["messaging"]:
 
+      
                 sender_id = messaging_event["sender"]["id"]
 
                 # ===== 選單按鈕 =====
                 if "postback" in messaging_event:
                 
                     payload = messaging_event["postback"]["payload"]
-                
+            
                     if payload == "GET_STARTED":
 
                         send_help_menu(sender_id)
 
                     elif payload == "START_CHAT":
                 
+          
                         handle_text(sender_id, "開始")
                  
                     elif payload == "LEAVE_CHAT":
                 
                         handle_text(sender_id, "離開")
-                
+    
 
                 # ===== 一般訊息 =====
                 if "message" in messaging_event:
@@ -1495,11 +1537,13 @@ def webhook():
 
                     if banned.data:
 
+      
                         send_message(
                             sender_id,
                             "🚫 你的帳號已被停權"
                         )
 
+ 
                         continue
 
                     message = messaging_event["message"]
@@ -1508,6 +1552,7 @@ def webhook():
 
                         text = message["text"]
 
+      
                         if not check_rate_limit(
                             sender_id,
                             "text"
@@ -1516,7 +1561,7 @@ def webhook():
                             send_message(
                                 sender_id,
                                 "⚠️ 傳送過快，請稍後再試"
-                            )
+                             )
 
                         else:
 
@@ -1527,6 +1572,7 @@ def webhook():
 
                     if "attachments" in message:
 
+            
                         handle_attachment(
                             sender_id,
                             message["attachments"]
@@ -1535,7 +1581,7 @@ def webhook():
     return "ok", 200
 
 if __name__ == "__main__":
-    # 修正：直接移除未定義的 setup_persistent_menu()，確保 Railway 絕對不會再啟動報錯崩潰！
+    # 已經將導致崩潰的 setup_persistent_menu() 安全移除
     app.run(
         host="0.0.0.0",
         port=5000
