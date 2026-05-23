@@ -575,13 +575,13 @@ def start_match(user_id):
 
         send_message(
             user_id,
-            f"✅ 配對成功！\n你的暱稱：{nickname1}"
+            f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n你的暱稱：{nickname1}"
         )
 
         # 修正：發送給老使用者 partner 時加上 tag，突破 24 小時限制
         send_message(
             partner,
-            f"✅ 配對成功！\n你的暱稱：{nickname2}",
+            f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n你的暱稱：{nickname2}",
             tag="ACCOUNT_UPDATE"
         )
 
