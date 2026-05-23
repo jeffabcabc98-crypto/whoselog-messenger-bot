@@ -1005,7 +1005,7 @@ def handle_text(user_id, text):
             return
 
         # 取消配對
-        if text in ["取消配對", "0022"]:
+        if text in ["取消配對", "5544"]:
 
             check = supabase.table("waiting_users") \
                 .select("*") \
