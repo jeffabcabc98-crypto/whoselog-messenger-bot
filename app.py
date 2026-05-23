@@ -184,7 +184,7 @@ def get_user_name(user_id):
         return "未知使用者"
 
 # =========================
-# 發送文字 (修正：加入 tag 參數以支援 24 小時破除限制)
+# 發送文字
 # =========================
 def send_message(user_id, text, tag=None):
 
@@ -299,6 +299,7 @@ def handle_attachment(user_id, attachments):
         return
 
     partner = result.data[0]["partner_id"]
+
 
     for attachment in attachments:
 
@@ -583,7 +584,6 @@ def start_match(user_id):
             f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n你的暱稱：{nickname1}"
         )
 
-        # 修正：發送給老使用者 partner 時加上 tag，突破 24 小時限制
         send_message(
             partner,
             f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n你的暱稱：{nickname2}",
@@ -665,7 +665,6 @@ def handle_text(user_id, text):
                     clear_chat_pair(user_id)
 
                     try:
-                        # 修正：加上 tag 通知 partner
                         send_message(
                             partner,
                             "⚠️ 對方已離開聊天室",
@@ -802,7 +801,6 @@ def handle_text(user_id, text):
                     )
      
                     try:
-                        # 修正：加上 tag 通知被封鎖方
                         send_message(
                             partner,
                             "🥲 對方似乎不喜歡你，已離開聊天室",
@@ -866,7 +864,6 @@ def handle_text(user_id, text):
                         clear_chat_pair(user_id)
 
                     try:
-                        # 修正：加上 tag 通知被跳過方
                         send_message(
                             partner,
                             "🥲 對方似乎不喜歡你，已離開聊天室",
@@ -993,7 +990,7 @@ def handle_text(user_id, text):
 
                 return
 
-            # 檢舉確認
+            # 檢舉確認 (已修復 `是` 的反單引號錯誤)
             if action == "report_confirm":
 
                 target_user = pending.data[0]["target_user_id"]
@@ -1022,7 +1019,7 @@ def handle_text(user_id, text):
 
                     return
 
-                if text in ["`是`", "1"]:
+                if text in ["是", "1"]:
 
                     supabase.table("pending_actions") \
                         .delete() \
@@ -1042,7 +1039,6 @@ def handle_text(user_id, text):
                     )
 
                     try:
-                        # 修正：加上 tag 通知被檢舉方
                         send_message(
                             target_user,
                             "🥲 對方似乎不喜歡你，已離開聊天室",
@@ -1126,7 +1122,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "currently not in a chat"
+                    "目前沒有聊天對象"
                 )
 
                 return
@@ -1353,7 +1349,6 @@ def handle_text(user_id, text):
         # 檢舉
         if text in ["檢舉", "0066"]:
 
-    
             result = supabase.table("chat_pairs") \
                 .select("*") \
                 .eq("user_id", user_id) \
@@ -1362,7 +1357,6 @@ def handle_text(user_id, text):
 
             if not result.data:
 
-       
                 send_message(
                     user_id,
                     "currently not in a chat"
@@ -1448,7 +1442,6 @@ def webhook():
 
     if data["object"] in ["page", "instagram"]:
 
-     
         for entry in data["entry"]:
         
             print("ENTRY:", entry)
@@ -1458,7 +1451,6 @@ def webhook():
             # =========================
             if "changes" in entry:
         
-     
                 print("INSTAGRAM CHANGES:", entry["changes"])
         
                 for change in entry["changes"]:
@@ -1471,13 +1463,11 @@ def webhook():
         
                             sender_id = msg["from"]["id"]
         
-                 
                             print("IG MESSAGE:", msg)
         
                             # 文字
                             if "text" in msg:
         
-           
                                 text = msg["text"]
      
                                 handle_text(
@@ -1504,7 +1494,6 @@ def webhook():
 
             for messaging_event in entry["messaging"]:
 
-      
                 sender_id = messaging_event["sender"]["id"]
 
                 # ===== 選單按鈕 =====
@@ -1518,7 +1507,6 @@ def webhook():
 
                     elif payload == "START_CHAT":
                 
-          
                         handle_text(sender_id, "開始")
                  
                     elif payload == "LEAVE_CHAT":
@@ -1537,13 +1525,11 @@ def webhook():
 
                     if banned.data:
 
-      
                         send_message(
                             sender_id,
                             "🚫 你的帳號已被停權"
                         )
 
- 
                         continue
 
                     message = messaging_event["message"]
@@ -1552,7 +1538,6 @@ def webhook():
 
                         text = message["text"]
 
-      
                         if not check_rate_limit(
                             sender_id,
                             "text"
@@ -1572,7 +1557,6 @@ def webhook():
 
                     if "attachments" in message:
 
-            
                         handle_attachment(
                             sender_id,
                             message["attachments"]
@@ -1581,7 +1565,12 @@ def webhook():
     return "ok", 200
 
 if __name__ == "__main__":
-    # 已經將導致崩潰的 setup_persistent_menu() 安全移除
+    # 安全防呆：如果環境中沒有對應的選單函式，直接跳過不報錯，避免 Railway 當機！
+    try:
+        setup_persistent_menu()
+    except NameError:
+        print("setup_persistent_menu is not defined, boot sequence continues...")
+
     app.run(
         host="0.0.0.0",
         port=5000
