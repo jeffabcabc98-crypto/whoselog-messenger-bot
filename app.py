@@ -5,7 +5,7 @@ import random
 from datetime import datetime, timedelta, timezone
 from supabase import create_client
 
-# ======= 【新增：匯入終極密碼遊戲模組】 =======
+# ======= 【匯入終極密碼遊戲模組】 =======
 from number_bomb import start_ultimate_password, handle_guess
 # ==========================================
 
@@ -367,7 +367,7 @@ def handle_attachment(user_id, attachments):
                 )
 
            
-            # 修正：轉發附件給對方時加上 tag，避免對方過期收不到
+            # 轉發附件給對方時加上 tag，避免對方過期收不到
             send_attachment(
                 partner,
                 attachment,
@@ -589,13 +589,13 @@ def start_match(user_id):
       
         send_message(
             user_id,
-            f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n你的暱稱：{nickname1}"
+            f"✅ 配對成功！\n你的暱稱：{nickname1}"
         )
 
-        # 修正：發送給等待中的老使用者 partner 時加上 tag，突破 24 小時限制
+        # 發送給等待中的老使用者 partner 時加上 tag，突破 24 小時限制
         send_message(
             partner,
-            f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n你的暱稱：{nickname2}",
+            f"✅ 配對成功！\n你的暱稱：{nickname2}",
             tag="ACCOUNT_UPDATE"
         )
 
@@ -619,7 +619,7 @@ def handle_text(user_id, text):
 
     try:
 
-        # ======= 【新增：終極密碼小遊戲關鍵字觸發】 =======
+        # ======= 【終極密碼小遊戲關鍵字觸發】 =======
         if text == "終極密碼":
             result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
             if result.data:
@@ -672,7 +672,6 @@ def handle_text(user_id, text):
                     clear_chat_pair(user_id)
 
                     try:
-                        # 修正：通知對方時加上 tag
                         send_message(
                             partner,
                             "⚠️ 對方已離開聊天室",
@@ -799,7 +798,6 @@ def handle_text(user_id, text):
                         "🚫 已成功將對方封鎖"
                     )
                     try:
-                        # 修正：通知對方時加上 tag
                         send_message(
                             partner,
                             "🥲 對方似乎不喜歡你，已離開聊天室",
@@ -860,7 +858,6 @@ def handle_text(user_id, text):
                         clear_chat_pair(user_id)
 
                     try:
-                        # 修正：通知對方時加上 tag
                         send_message(
                             partner,
                             "🥲 對方似乎不喜歡你，已離開聊天室",
@@ -1029,7 +1026,6 @@ def handle_text(user_id, text):
                     )
 
                     try:
-                        # 修正：通知對方時加上 tag
                         send_message(
                             target_user,
                             "🥲 對方似乎不喜歡你，已離開聊天室",
@@ -1109,7 +1105,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "目前沒有聊天對象"
+                    "currently not in a chat"
                 )
 
                 return
@@ -1144,7 +1140,7 @@ def handle_text(user_id, text):
 
                 send_message(
                     user_id,
-                    "目前沒有聊天對象"
+                    "currently not in a chat"
                 )
 
                 return
@@ -1374,13 +1370,12 @@ def handle_text(user_id, text):
             nickname = result.data[0]["nickname"]
             partner_nickname = result.data[0]["partner_nickname"]
 
-            # ======= 【新增：優先攔截猜數字遊戲判定】 =======
-            # 如果符合猜數字格式，訊息將被遊戲吃掉，不往下執行聊天轉發
+            # ======= 【優先攔截猜數字遊戲判定】 =======
             if handle_guess(user_id, text, partner, nickname, partner_nickname):
                 return
             # =============================================
 
-            # 修正：一般對話也加上 tag 轉發，避免雙方其中一人潛水超過 24 小時收不到訊息
+            # 一般對話也加上 tag 轉發，避免雙方其中一人潛水超過 24 小時收不到訊息
             send_message(
                 partner,
                 f"{nickname}：{text}",
@@ -1540,8 +1535,7 @@ def webhook():
     return "ok", 200
 
 if __name__ == "__main__":
-    setup_persistent_menu()
-
+    # 修正：直接移除未定義的 setup_persistent_menu()，確保 Railway 絕對不會再啟動報錯崩潰！
     app.run(
         host="0.0.0.0",
         port=5000
