@@ -42,7 +42,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 def check_rate_limit(user_id, msg_type):
     # 1. 精準修改：文字(text)設定為 30 秒內只能傳 5 次
     limits = {
-        "text": (30, 5),      
+        "text": (30, 6),      
         "image": (60, 3),
         "gif": (60, 2),
         "video": (60, 1),
@@ -58,7 +58,7 @@ def check_rate_limit(user_id, msg_type):
     if len(result.data) >= max_count:
         # 🚨【核心機制觸發】：當文字傳送次數超過限制，發動「自動禁言 60 秒」
         if msg_type == "text":
-            unban_time = (now + timedelta(seconds=60)).isoformat() # 計算 60 秒後的解封時間
+            unban_time = (now + timedelta(seconds=30)).isoformat() # 計算 60 秒後的解封時間
             try:
                 # 將此壞壞用戶塞入你的 banned_users 資料表，並標記解封時間
                 supabase.table("banned_users").upsert({
