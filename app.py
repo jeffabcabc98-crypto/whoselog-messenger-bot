@@ -260,11 +260,10 @@ def start_match(user_id):
         send_message(partner, msg_template.format(nickname2, nickname1), tag="ACCOUNT_UPDATE")
     else:
         supabase.table("waiting_users").insert({"user_id": user_id}).execute()
-        send_message(user_id, "⏳ 等待配對中...目前人數較少須等待，還請各位幫小編多多推廣!!"
-)
+        send_message(user_id, "⏳ 等待配對中...目前人數較少須等待，還請各位幫小編多多推廣!!")
 
 # =========================
-# 文字處理核心 (已完美瘦身)
+# 文字處理核心 
 # =========================
 def handle_text(user_id, text):
     text = text.strip()
@@ -275,14 +274,26 @@ def handle_text(user_id, text):
             send_message(user_id, "❌ 目前沒有正在進行中的互動小遊戲喔！")
             return
 
-        # ======= 【2. 小遊戲模組關鍵字觸發】 =======
+        # ======= 【2. ✨ 安全防禦：防止同時開啟多個小遊戲 ＆ 重複洗開局】 =======
         if text in ["終極密碼", "猜拳", "誰是臥底"]:
             result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
             if not result.data:
                 send_message(user_id, "⚠️ 必須在聊天對話中才能開始遊戲喔！")
                 return
+                
             partner, n1, n2 = result.data[0]["partner_id"], result.data[0]["nickname"], result.data[0]["partner_nickname"]
             
+            # 🚀【跨遊戲安全聯防】：檢查目前是否有「任何一款」小遊戲正在進行中（is_active = True）
+            has_bomb = supabase.table("game_ultimate_password").select("id").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute().data
+            has_rps = supabase.table("game_rps").select("id").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute().data
+            has_spy = supabase.table("game_undercover").select("id").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute().data
+            
+            # 🚨 只要有任何一款遊戲開著，一律攔截並不重複初始化！
+            if has_bomb or has_rps or has_spy:
+                send_message(user_id, "⚠️ 目前已有互動小遊戲（猜拳/終極密碼/誰是臥底）正在進行中，不能重複開啟！\n\n請先將當前遊戲玩完，或輸入「取消遊玩」結束遊戲後，才能開啟新局喔！")
+                return
+
+            # 後台完全乾淨，才允許執行開局
             if text == "終極密碼" and start_ultimate_password: start_ultimate_password(user_id, partner, n1, n2)
             elif text == "猜拳" and start_rps: start_rps(user_id, partner, n1, n2)
             elif text == "誰是臥底" and start_undercover: start_undercover(user_id, partner, n1, n2)
