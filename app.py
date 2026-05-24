@@ -260,7 +260,8 @@ def start_match(user_id):
         send_message(partner, msg_template.format(nickname2, nickname1), tag="ACCOUNT_UPDATE")
     else:
         supabase.table("waiting_users").insert({"user_id": user_id}).execute()
-        send_message(user_id, "⏳ 等待配對中...目前人數較少須等待，還請各位幫小編多多推廣!!")
+        send_message(user_id, "⏳ 等待配對中...目前人數較少須等待，還請各位幫小編多多推廣!!"
+)
 
 # =========================
 # 文字處理核心 (已完美瘦身)
@@ -287,7 +288,7 @@ def handle_text(user_id, text):
             elif text == "誰是臥底" and start_undercover: start_undercover(user_id, partner, n1, n2)
             return
 
-        # ======= 【3. ✨ 瘦身關鍵點：外部化Pending指令處理】 =======
+        # ======= 【3. 外部化Pending指令處理】 =======
         pending = supabase.table("pending_actions").select("*").eq("user_id", user_id).limit(1).execute()
         if pending.data:
             if handle_pending_actions and handle_pending_actions(user_id, text, pending.data[0]["action"], pending.data[0]):
@@ -305,7 +306,7 @@ def handle_text(user_id, text):
         if text in ["下一位", "0033", "離開", "0088", "封鎖", "0099", "檢舉", "0066"]:
             result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
             if not result.data:
-                send_message(user_id, "目前沒有聊天對象" if "檢舉" not in text else "目前沒有聊天對象")
+                send_message(user_id, "目前沒有聊天對象")
                 return
             partner = result.data[0]["partner_id"]
             
@@ -374,7 +375,6 @@ def webhook():
     data = request.json
     if data.get("object") in ["page", "instagram"]:
         for entry in data.get("entry", []):
-            # Instagram
             if "changes" in entry:
                 for change in entry.get("changes", []):
                     value = change.get("value", {})
@@ -383,7 +383,6 @@ def webhook():
                             sender_id = msg["from"]["id"]
                             if "text" in msg: handle_text(sender_id, msg["text"])
                             if "attachments" in msg: handle_attachment(sender_id, msg["attachments"])
-            # Facebook Messenger
             if "messaging" in entry:
                 for messaging_event in entry.get("messaging", []):
                     sender_id = messaging_event["sender"]["id"]
