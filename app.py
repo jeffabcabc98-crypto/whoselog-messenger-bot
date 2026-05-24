@@ -485,7 +485,7 @@ def start_match(user_id):
 
         send_message(
             user_id,
-            "⏳ 你已經在等待配對中了"
+            "⏳ 你已經在等待配對中了，目前人數較少須等待，還請各位幫小編多多推廣!!"
         )
         return
 
@@ -615,7 +615,7 @@ def start_match(user_id):
 
         send_message(
             user_id,
-            "⏳ 等待配對中..."
+            "⏳ 等待配對中...目前人數較少須等待，還請各位幫小編多多推廣!!"
         )
 
 # =========================
