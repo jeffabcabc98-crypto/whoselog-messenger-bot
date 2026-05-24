@@ -5,13 +5,19 @@ import random
 from datetime import datetime, timedelta, timezone
 from supabase import create_client
 
-# ======= 【安全防禦：動態安全匯入遊戲模組，防止找不到檔案崩潰】 =======
+# ======= 【安全防禦：動態安全匯入所有遊戲模組，防止找不到檔案崩潰】 =======
 try:
     from number_bomb import start_ultimate_password, handle_guess
 except ImportError:
     print("⚠️ [警告] 伺服器暫時找不到 number_bomb.py 模組！")
     start_ultimate_password = None
     handle_guess = None
+
+try:
+    from game_modules import start_rps, handle_rps_move, start_undercover, handle_undercover_vote, cancel_game
+except ImportError:
+    print("⚠️ [警告] 伺服器暫時找不到 game_modules.py 模組！")
+    start_rps = handle_rps_move = start_undercover = handle_undercover_vote = cancel_game = None
 # =====================================================================
 
 app = Flask(__name__)
@@ -37,7 +43,6 @@ def check_rate_limit(user_id, msg_type):
         "audio": (60, 3)
     }
 
-    # 已修復斷行
     seconds, max_count = limits[msg_type]
 
     since_time = (
@@ -56,7 +61,6 @@ def check_rate_limit(user_id, msg_type):
         return False
 
    
-    # 修正：已將錯誤的逗號改回正確的冒號 :
     supabase.table("rate_limits").insert({
         "user_id": user_id,
         "msg_type": msg_type
@@ -141,7 +145,6 @@ def get_user_name(user_id):
         # =========================
         # 存入 cache
         # =========================
-        # 修正：已將錯誤的逗號改回正確的冒號 :
         supabase.table("users").upsert({
             "user_id": user_id,
             "fb_name": name,
@@ -249,8 +252,11 @@ def send_help_menu(user_id):
         "• 黑名單\n"
         "• 解除封鎖\n\n"
         
-        "✨ 其他功能\n"
-        "✨ 輸入：終極密碼，配對後即可跟對方玩\n\n"
+        "🎮 互動小遊戲（配對成功後方可輸入）\n"
+        "• 輸入【終極密碼】: 開啟猜數字炸彈遊戲\n"
+        "• 輸入【猜拳】: 開啟不留痕跡秘密猜拳\n"
+        "• 輸入【誰是臥底】: 開啟雙人詞彙臥底推理\n"
+        "• 輸入【取消遊玩】: 隨時終止進行中的小遊戲\n\n" # ✨ 已成功新增說明！
         
         "目前還處在開發階段，人可能會比較少，請各位還手下留情，多多幫小編推廣感激!!"
     )
@@ -588,13 +594,13 @@ def start_match(user_id):
             "user2": partner
         }).execute()
 
-        # ✨ 【已徹底修正：字串串接與參數錯誤地雷，加入正確的換行】
+        # 精準對接換行排版
         send_message(
             user_id,
             f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n"
             f"👤 你的暱稱：{nickname1}\n"
             f"💬 對方的暱稱：{nickname2}\n\n"
-            f"🎮 目前有新增小遊戲，輸入「終極密碼」即可跟對方一起玩喔！"
+            f"🎮 目前有新增小遊戲輸入「終極密碼」、「猜拳」或「誰是臥底」跟對方一起玩吧！"
         )
 
         send_message(
@@ -602,7 +608,7 @@ def start_match(user_id):
             f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n"
             f"👤 你的暱稱：{nickname2}\n"
             f"💬 對方的暱稱：{nickname1}\n\n"
-            f"🎮 目前有新增小遊戲，輸入「終極密碼」即可跟對方一起玩喔！",
+            f"🎮 目前有新增小遊戲輸入「終極密碼」、「猜拳」或「誰是臥底」跟對方一起玩吧！",
             tag="ACCOUNT_UPDATE"
         )
 
@@ -627,7 +633,16 @@ def handle_text(user_id, text):
 
     try:
 
-        # ======= 【新增：終極密碼小遊戲關鍵字觸發】 =======
+        # ======= 【✨ 優先核心攔截：取消遊玩一鍵退賽】 =======
+        if text == "取消遊玩":
+            if cancel_game and cancel_game(user_id):
+                return
+            else:
+                send_message(user_id, "❌ 目前沒有正在進行中的互動小遊戲喔！")
+                return
+        # ===================================================
+
+        # ======= 【小遊戲模組關鍵字觸發區】 =======
         if text == "終極密碼":
             if start_ultimate_password:
                 result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
@@ -642,6 +657,38 @@ def handle_text(user_id, text):
                     return
             else:
                 send_message(user_id, "⚠️ 遊戲功能暫時關閉，請確認伺服器有上傳 number_bomb.py。")
+                return
+
+        elif text == "猜拳":
+            if start_rps:
+                result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
+                if result.data:
+                    partner = result.data[0]["partner_id"]
+                    nickname1 = result.data[0]["nickname"]
+                    nickname2 = result.data[0]["partner_nickname"]
+                    start_rps(user_id, partner, nickname1, nickname2)
+                    return
+                else:
+                    send_message(user_id, "⚠️ 必須在聊天對話中才能開始遊戲喔！")
+                    return
+            else:
+                send_message(user_id, "⚠️ 猜拳小遊戲模組未就緒。")
+                return
+
+        elif text == "誰是臥底":
+            if start_undercover:
+                result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
+                if result.data:
+                    partner = result.data[0]["partner_id"]
+                    nickname1 = result.data[0]["nickname"]
+                    nickname2 = result.data[0]["partner_nickname"]
+                    start_undercover(user_id, partner, nickname1, nickname2)
+                    return
+                else:
+                    send_message(user_id, "⚠️ 必須在聊天對話中才能開始遊戲喔！")
+                    return
+            else:
+                send_message(user_id, "⚠️ 誰是臥底小遊戲模組未就緒。")
                 return
         # ===============================================
 
@@ -981,7 +1028,7 @@ def handle_text(user_id, text):
                     "reporter_name": reporter_name,
                     "reported_user_id": target_user,
                     "reported_name": reported_name,
-                    "reason": reason
+                    "reason": "reason"
                 }).execute()
 
                 add_risk_score(
@@ -1217,7 +1264,7 @@ def handle_text(user_id, text):
               
                 send_message(
                     user_id,
-                    "目前沒有聊天對象"
+                    "開目前沒有聊天對象"
                 )
 
                 return
@@ -1408,7 +1455,7 @@ def handle_text(user_id, text):
          
             return
 
-        # 聊天轉發
+        # 聊天普通轉發與所有小遊戲的輸入攔截
         result = supabase.table("chat_pairs") \
             .select("*") \
             .eq("user_id", user_id) \
@@ -1416,16 +1463,24 @@ def handle_text(user_id, text):
             .execute()
 
         if result.data:
-
             partner = result.data[0]["partner_id"]
             nickname = result.data[0]["nickname"]
 
-            # ======= 【✨ 優先攔截猜數字與外掛指令】 =======
+            # ======= 【✨ 小遊戲模組訊息攔截對接】 =======
+            # 1. 攔截終極密碼猜數字
             if handle_guess and handle_guess(user_id, text):
+                return
+                
+            # 2. 攔截猜拳出拳 (剪刀/石頭/布)
+            if handle_rps_move and handle_rps_move(user_id, text):
+                return
+                
+            # 3. 攔截誰是臥底投票 (抓臥底 暱稱)
+            if handle_undercover_vote and handle_undercover_vote(user_id, text):
                 return
             # =============================================
 
-            # 轉發
+            # 一般聊天轉發
             send_message(
                 partner,
                 f"{nickname}：{text}",
