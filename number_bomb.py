@@ -6,11 +6,12 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# 引用主程式的發訊功能
-from app import send_message 
+# 💡 關鍵：千萬不要在最頂部寫 from app import send_message，這會導致開機卡死！
 
 def start_ultimate_password(user_id, partner_id, nickname1, nickname2):
     """由主程式觸發：初始化終極密碼遊戲，並隨機決定誰先開始"""
+    # 區域匯入：等到遊戲真的要執行了，才進 app 拿功能，徹底避開死結
+    from app import send_message 
     
     # 1. 清理這兩個人可能殘留的舊局
     supabase.table("game_ultimate_password")\
@@ -52,6 +53,8 @@ def start_ultimate_password(user_id, partner_id, nickname1, nickname2):
 
 def handle_guess(user_id, text):
     """處理遊戲邏輯，包含猜數字、查詢答案指令"""
+    # 區域匯入：等到要猜數字了，才進 app 拿功能
+    from app import send_message 
     
     # ======= 【偷看答案指令攔截】 =======
     if text in ["6688", "我想知道答案"]:
