@@ -37,7 +37,6 @@ def check_rate_limit(user_id, msg_type):
         "audio": (60, 3)
     }
 
-    # 已修復斷行
     seconds, max_count = limits[msg_type]
 
     since_time = (
@@ -56,7 +55,6 @@ def check_rate_limit(user_id, msg_type):
         return False
 
    
-    # 修正：已將錯誤的逗號改回正確的冒號 :
     supabase.table("rate_limits").insert({
         "user_id": user_id,
         "msg_type": msg_type
@@ -141,7 +139,6 @@ def get_user_name(user_id):
         # =========================
         # 存入 cache
         # =========================
-        # 修正：已將錯誤的逗號改回正確的冒號 :
         supabase.table("users").upsert({
             "user_id": user_id,
             "fb_name": name,
@@ -250,8 +247,7 @@ def send_help_menu(user_id):
         "• 解除封鎖\n\n"
         
         "✨ 其他功能\n"
-        "✨ 輸入：終極密碼，配對後即可跟對方玩"
-　　　　
+
         "目前還處在開發階段，人可能會比較少，請各位還手下留情，多多幫小編推廣感激!!"
     )
 
@@ -485,7 +481,7 @@ def start_match(user_id):
 
         send_message(
             user_id,
-            "⏳ 你已經在等待配對中了，目前人數較少須等待，還請各位幫小編多多推廣!!"
+            "⏳ 你已經在等待配對中了"
         )
         return
 
@@ -588,12 +584,12 @@ def start_match(user_id):
             "user2": partner
         }).execute()
 
+        # 已更新：讓雙方配對成功時能知道彼此的暱稱
         send_message(
             user_id,
             f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n"
             f"👤 你的暱稱：{nickname1}\n"
             f"💬 對方的暱稱：{nickname2}"
-            f"目前有新增小遊戲輸入:終極密碼，跟對方一起玩吧！"
         )
 
         send_message(
@@ -601,7 +597,6 @@ def start_match(user_id):
             f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n"
             f"👤 你的暱稱：{nickname2}\n"
             f"💬 對方的暱稱：{nickname1}",
-            f"目前有新增小遊戲輸入:終極密碼，跟對方一起玩吧！"
             tag="ACCOUNT_UPDATE"
         )
 
@@ -614,7 +609,7 @@ def start_match(user_id):
 
         send_message(
             user_id,
-            "⏳ 等待配對中...目前人數較少須等待，還請各位幫小編多多推廣!!"
+            "⏳ 等待配對中..."
         )
 
 # =========================
@@ -818,7 +813,6 @@ def handle_text(user_id, text):
                         user_id,
                         "🚫 已成功將對方封鎖"
                     )
-     
                     try:
                         send_message(
                             partner,
@@ -1151,7 +1145,6 @@ def handle_text(user_id, text):
                 .eq("user_id", user_id) \
                 .execute()
 
-            # 修正：改回冒號
             supabase.table("pending_actions").insert({
                 "user_id": user_id,
                 "action": "confirm_next"
@@ -1189,7 +1182,6 @@ def handle_text(user_id, text):
                 .eq("user_id", user_id) \
                 .execute()
 
-            # 修正：改回冒號
             supabase.table("pending_actions").insert({
                 "user_id": user_id,
                 "action": "confirm_leave"
@@ -1247,7 +1239,6 @@ def handle_text(user_id, text):
                 .eq("user_id", user_id) \
                 .execute()
 
-            # 修正：改回冒號
             supabase.table("pending_actions").insert({
                 "user_id": user_id,
                 "action": "confirm_block"
@@ -1394,7 +1385,6 @@ def handle_text(user_id, text):
                 .eq("user_id", user_id) \
                 .execute()
 
-            # 修正：改回冒號
             supabase.table("pending_actions").insert({
                 "user_id": user_id,
                 "action": "report_reason",
@@ -1421,7 +1411,7 @@ def handle_text(user_id, text):
             partner = result.data[0]["partner_id"]
             nickname = result.data[0]["nickname"]
 
-            # ======= 【✨ 優先攔截猜數字與外掛指令】 =======
+            # ======= 【優先攔截猜數字與外掛指令】 =======
             if handle_guess and handle_guess(user_id, text):
                 return
             # =============================================
