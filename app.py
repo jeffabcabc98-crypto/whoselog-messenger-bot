@@ -37,7 +37,7 @@ def check_rate_limit(user_id, msg_type):
         "audio": (60, 3)
     }
 
-    # 修正：徹底修復原始檔中斷行導致的致命 SyntaxError
+    # 已修復斷行
     seconds, max_count = limits[msg_type]
 
     since_time = (
@@ -56,6 +56,7 @@ def check_rate_limit(user_id, msg_type):
         return False
 
    
+    # 修正：已將錯誤的逗號改回正確的冒號 :
     supabase.table("rate_limits").insert({
         "user_id": user_id,
         "msg_type": msg_type
@@ -140,6 +141,7 @@ def get_user_name(user_id):
         # =========================
         # 存入 cache
         # =========================
+        # 修正：已將錯誤的逗號改回正確的冒號 :
         supabase.table("users").upsert({
             "user_id": user_id,
             "fb_name": name,
@@ -190,7 +192,7 @@ def get_user_name(user_id):
         return "未知使用者"
 
 # =========================
-# 發送文字 (修正：增加 tag 參數以支援 24 小時標籤突破)
+# 發送文字
 # =========================
 def send_message(user_id, text, tag=None):
 
@@ -253,7 +255,7 @@ def send_help_menu(user_id):
     )
 
 # =========================
-# 發送附件 (修正：增加 tag 參數以支援 24 小時標籤突破)
+# 發送附件
 # =========================
 def send_attachment(user_id, attachment, tag=None):
 
@@ -305,6 +307,7 @@ def handle_attachment(user_id, attachments):
         return
 
     partner = result.data[0]["partner_id"]
+
 
     for attachment in attachments:
 
@@ -367,7 +370,7 @@ def handle_attachment(user_id, attachments):
                     None
                 )
 
-            # 修正：轉發附件給對方時加上 tag，避免對方過期收不到
+            # 轉發附件給對方時加上 tag
             send_attachment(
                 partner,
                 attachment,
@@ -378,7 +381,7 @@ def handle_attachment(user_id, attachments):
             print("ATTACHMENT ERROR:", e)
 
 # =========================
-# 清理聊天室配對 (雙向清除保留)
+# 清理聊天室配對
 # =========================
 def clear_chat_pair(user_id):
 
@@ -589,7 +592,6 @@ def start_match(user_id):
             f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n你的暱稱：{nickname1}"
         )
 
-        # 修正：發送給老使用者 partner 時加上 tag，突破 24 小時限制
         send_message(
             partner,
             f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n你的暱稱：{nickname2}",
@@ -675,7 +677,6 @@ def handle_text(user_id, text):
                     clear_chat_pair(user_id)
 
                     try:
-                        # 修正：加上 tag 通知 partner
                         send_message(
                             partner,
                             "⚠️ 對方已離開聊天室",
@@ -735,7 +736,7 @@ def handle_text(user_id, text):
 
                         send_message(
                             user_id,
-                            "目前沒有聊天對象"
+                            "開目前沒有聊天對象"
                         )
 
                         return
@@ -812,7 +813,6 @@ def handle_text(user_id, text):
                     )
      
                     try:
-                        # 修正：加上 tag 通知被封鎖方
                         send_message(
                             partner,
                             "🥲 對方似乎不喜歡你，已離開聊天室",
@@ -876,7 +876,6 @@ def handle_text(user_id, text):
                         clear_chat_pair(user_id)
 
                     try:
-                        # 修正：加上 tag 通知被跳過方
                         send_message(
                             partner,
                             "🥲 對方似乎不喜歡你，已離開聊天室",
@@ -1052,7 +1051,6 @@ def handle_text(user_id, text):
                     )
 
                     try:
-                        # 修正：加上 tag 通知被檢舉方
                         send_message(
                             target_user,
                             "🥲 對方似乎不喜歡你，已離開聊天室",
@@ -1146,6 +1144,7 @@ def handle_text(user_id, text):
                 .eq("user_id", user_id) \
                 .execute()
 
+            # 修正：改回冒號
             supabase.table("pending_actions").insert({
                 "user_id": user_id,
                 "action": "confirm_next"
@@ -1173,7 +1172,7 @@ def handle_text(user_id, text):
                
                 send_message(
                     user_id,
-                    "currently not in a chat"
+                    "開目前沒有聊天對象"
                 )
 
                 return
@@ -1183,6 +1182,7 @@ def handle_text(user_id, text):
                 .eq("user_id", user_id) \
                 .execute()
 
+            # 修正：改回冒號
             supabase.table("pending_actions").insert({
                 "user_id": user_id,
                 "action": "confirm_leave"
@@ -1211,7 +1211,7 @@ def handle_text(user_id, text):
               
                 send_message(
                     user_id,
-                    "currently not in a chat"
+                    "目前沒有聊天對象"
                 )
 
                 return
@@ -1240,6 +1240,7 @@ def handle_text(user_id, text):
                 .eq("user_id", user_id) \
                 .execute()
 
+            # 修正：改回冒號
             supabase.table("pending_actions").insert({
                 "user_id": user_id,
                 "action": "confirm_block"
@@ -1264,7 +1265,7 @@ def handle_text(user_id, text):
             if not result.data:
 
                 send_message(
-                    user_id,
+                     user_id,
                     "📭 黑名單目前是空的"
                 )
 
@@ -1386,6 +1387,7 @@ def handle_text(user_id, text):
                 .eq("user_id", user_id) \
                 .execute()
 
+            # 修正：改回冒號
             supabase.table("pending_actions").insert({
                 "user_id": user_id,
                 "action": "report_reason",
@@ -1417,7 +1419,7 @@ def handle_text(user_id, text):
                 return
             # =============================================
 
-            # 修正：一般聊天轉發也加上 tag，避免潛水方超過 24 小時收不到訊息
+            # 轉發
             send_message(
                 partner,
                 f"{nickname}：{text}",
@@ -1578,7 +1580,6 @@ def webhook():
     return "ok", 200
 
 if __name__ == "__main__":
-    # 安全防呆：如果環境中沒有對應的選單函式，直接跳過不報錯，避免 NameError 導致 Railway 當機！
     try:
         setup_persistent_menu()
     except NameError:
