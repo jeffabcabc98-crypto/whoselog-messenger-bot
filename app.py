@@ -250,7 +250,8 @@ def send_help_menu(user_id):
         "• 解除封鎖\n\n"
         
         "✨ 其他功能\n"
-
+        "✨ 輸入：終極密碼，配對後即可跟對方玩"
+　　　　
         "目前還處在開發階段，人可能會比較少，請各位還手下留情，多多幫小編推廣感激!!"
     )
 
@@ -589,12 +590,19 @@ def start_match(user_id):
 
         send_message(
             user_id,
-            f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n你的暱稱：{nickname1}"
+            f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n"
+        
+            f"👤 你的暱稱：{nickname1}\n"
+            f"💬 對方的暱稱：{nickname2}"
+            f"目前有新增小遊戲輸入:終極密碼，跟對方一起玩吧！"
         )
 
         send_message(
             partner,
-            f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n你的暱稱：{nickname2}",
+            f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n"
+            f"👤 你的暱稱：{nickname2}\n"
+            f"💬 對方的暱稱：{nickname1}",
+            f"目前有新增小遊戲輸入:終極密碼，跟對方一起玩吧！"
             tag="ACCOUNT_UPDATE"
         )
 
