@@ -26,7 +26,8 @@ def start_rps(user_id, partner_id, nickname1, nickname2):
     msg = (
         "🎲 剪刀石頭布遊戲開始囉！\n\n"
         "請在對話框直接輸入：剪刀、石頭 或 布\n"
-        "⚠️ 系統會秘密攔截你的出拳，不用擔心被對方偷看喔！"
+        "⚠️ 系統會秘密攔截你的出拳，不用擔心被對方偷看喔！\n\n"
+        "💡 提示：若中途不想玩了，任一方輸入「取消遊玩」即可結束遊戲。"
     )
     send_message(user_id, msg)
     send_message(partner_id, msg, tag="ACCOUNT_UPDATE")
@@ -104,7 +105,7 @@ WORDS_POOL = [
     # --- 經典食物與飲料組 ---
     ("生魚片", "壽司"), ("麥當勞", "肯德基"), ("珍珠奶茶", "牛肉麵"), 
     ("可口可樂", "百事可樂"), ("火鍋", "麻辣燙"), ("滷肉飯", "雞肉飯"), 
-    ("漢堡", "三民間"), ("咖啡", "茶"), ("巧克力", "糖果"), ("泡麵", "乾拌麵"),
+    ("漢堡", "三明治"), ("咖啡", "茶"), ("巧克力", "糖果"), ("泡麵", "乾拌麵"),
     # --- 日常生活用品組 ---
     ("鋼筆", "鉛筆"), ("口罩", "防毒面具"), ("吉他", "烏克麗麗"), 
     ("鏡子", "玻璃"), ("雨傘", "雨衣"), ("牙刷", "電動牙刷"), 
@@ -114,7 +115,7 @@ WORDS_POOL = [
     ("名偵探柯南", "金田一"), ("蜘蛛人", "蟻人"), ("皮卡丘", "伊布"),
     # --- 經典對立詞組（極具心機） ---
     ("眉毛", "睫毛"), ("班導師", "教官"), ("男朋友", "前男友"), 
-    ("班長", "副班長"), ("腳踏車", "摩托車"), ("捷運", "火車"), 
+    ("班長", "副班長"), ("腳探車", "摩托車"), ("捷運", "火車"), 
     ("飛機", "直升機"), ("結婚", "訂婚"), ("初戀", "單戀"), ("情敵", "暗戀"),
     # --- 科技與網路生活組 ---
     ("臉書", "Instagram"), ("LINE", "微信"), ("YouTube", "Netflix"), 
@@ -142,7 +143,7 @@ WORDS_POOL = [
     ("火龍果", "奇異果"), ("地瓜", "馬鈴薯"), ("起司", "奶油"), ("冰淇淋", "霜淇淋"),
     # --- 動漫影視與流行文化組 ---
     ("鬼滅之刃", "咒術迴戰"), ("進擊的巨人", "東京喰種"), ("火影忍者", "死神"), 
-    ("漫威", "DC"), ("演唱會", "音樂祭"), ("Cosplay", "萬聖節變裝"), 
+    ("漫威", "DC"), ("演唱會", "音樂祭"), ("Cosplay", "萬盛節變裝"), 
     ("YouTuber", "實況主"), ("周杰倫", "蔡依林"), ("九妹", "館長"), ("五月天", "告五人")
 ]
 
@@ -179,14 +180,16 @@ def start_undercover(user_id, partner_id, nickname1, nickname2):
         "🕵️ 誰是臥底遊戲開始囉！\n\n"
         f"🤫 你拿到的秘密詞彙是：【 {p1_word} 】\n\n"
         "👉 玩法：請各自用「一句話」描述你的詞（不能直接打出詞彙本身），並推理誰的詞跟自己不一樣！\n\n"
-        f"當你們描述完想投票抓臥底時，請輸入，舉例：`抓臥底 {nickname2}`"
+        f"當你們描述完想投票抓臥底時，請輸入，舉例：`抓臥底 {nickname2}`\n\n"
+        "💡 提示：若中途不想玩了，任一方輸入「取消遊玩」即可結束遊戲。"
     )
     
     msg_p2 = (
         "🕵️ 誰是臥底遊戲開始囉！\n\n"
         f"🤫 你拿到的秘密詞彙是：【 {p2_word} 】\n\n"
         "👉 玩法：請各自用「一句話」描述你的詞（不能直接打出詞彙本身），並推理誰的詞跟自己不一樣！\n\n"
-        f"當你們描述完想投票抓臥底時，請輸入，舉例：`抓臥底 {nickname1}`"
+        f"當你們描述完想投票抓臥底時，請輸入，舉例：`抓臥底 {nickname1}`\n\n"
+        "💡 提示：若中途不想玩了，任一方輸入「取消遊玩」即可結束遊戲。"
     )
     
     send_message(user_id, msg_p1)
@@ -246,3 +249,47 @@ def handle_undercover_vote(user_id, text):
     send_message(user_id, win_msg)
     send_message(partner_id, win_msg, tag="ACCOUNT_UPDATE")
     return True
+
+# ==========================================
+# 🛑 新增功能：一鍵強制取消所有小遊戲
+# ==========================================
+def cancel_game(user_id):
+    """當玩家輸入「取消遊玩」時，終止這兩個人進行中的任何小遊戲"""
+    from app import send_message
+    
+    # 1. 撈取暱稱
+    pair_query = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
+    if not pair_query.data:
+        return False
+        
+    my_name = pair_query.data[0]["nickname"]
+    partner_id = pair_query.data[0]["partner_id"]
+    
+    game_was_canceled = False
+    
+    # 2. 檢查並關閉終極密碼
+    bomb_check = supabase.table("game_ultimate_password").select("*").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute()
+    if bomb_check.data:
+        supabase.table("game_ultimate_password").update({"is_active": False}).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute()
+        game_was_canceled = True
+        
+    # 3. 檢查並關閉猜拳
+    rps_check = supabase.table("game_rps").select("*").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute()
+    if rps_check.data:
+        supabase.table("game_rps").update({"is_active": False}).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute()
+        game_was_canceled = True
+        
+    # 4. 檢查並關閉誰是臥底
+    spy_check = supabase.table("game_undercover").select("*").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute()
+    if spy_check.data:
+        supabase.table("game_undercover").update({"is_active": False}).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute()
+        game_was_canceled = True
+        
+    # 5. 如果有成功取消，發送雙向通知
+    if game_was_canceled:
+        msg = f"❌ 玩家【{my_name}】使用了【取消遊玩】指令，目前的互動小遊戲已強制結束！回歸普通聊天模式。"
+        send_message(user_id, msg)
+        send_message(partner_id, msg, tag="ACCOUNT_UPDATE")
+        return True
+        
+    return False
