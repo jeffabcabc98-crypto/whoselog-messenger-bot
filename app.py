@@ -591,7 +591,6 @@ def start_match(user_id):
         send_message(
             user_id,
             f"✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n"
-        
             f"👤 你的暱稱：{nickname1}\n"
             f"💬 對方的暱稱：{nickname2}"
             f"目前有新增小遊戲輸入:終極密碼，跟對方一起玩吧！"
