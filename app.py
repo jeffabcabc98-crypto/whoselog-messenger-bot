@@ -23,7 +23,7 @@ try:
     from actions import handle_pending_actions
 except ImportError:
     print("⚠️ [警告] 伺服器暫時找不到 actions.py 模組！")
-    handle_pending_actions = None
+    handle_pending_actions = None  # ⚙️ 修正：徹底解決此處的縮排地雷！
 # =====================================================================
 
 app = Flask(__name__)
@@ -37,7 +37,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ==========================================
-# 🛡️ 防洗版（已整合：30秒限5次 ＆ 自動禁言60秒機制）
+# 🛡️ 防洗版（已整合：30秒限10次 ＆ 自動禁言60秒機制）
 # ==========================================
 def check_rate_limit(user_id, msg_type):
     limits = {
@@ -64,7 +64,6 @@ def check_rate_limit(user_id, msg_type):
                     "expires_at": unban_time  
                 }).execute()
                 
-                # 這裡會確實發送警告
                 send_message(user_id, "🚨 警告：偵測到你傳送文字速度過快，已被系統自動禁言 60 秒！請稍候再試。")
             except Exception as ban_err:
                 print("AUTOMATIC BAN ERROR:", ban_err)
@@ -216,7 +215,7 @@ def clear_chat_pair(user_id):
             supabase.table("chat_pairs").delete().or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute()
             supabase.table("chat_pairs").delete().or_(f"user_id.eq.{partner},partner_id.eq.{partner}").execute()
             supabase.table("waiting_users").delete().or_(f"user_id.eq.{user_id},user_id.eq.{partner}").execute()
-            supabase.table("pending_actions").delete().eq("user_id", user_id).execute()
+        supabase.table("pending_actions").delete().eq("user_id", user_id).execute()
     except Exception as e:
         print("CLEAR CHAT ERROR:", e)
 
@@ -282,16 +281,17 @@ def start_match(user_id):
 # 文字處理核心 
 # =========================
 def handle_text(user_id, text):
-    text = text.strip()
+    # ✨ 核心防呆：自動過濾掉首尾的所有空白、換行與中括號，防範全形字串誤差
+    clean_text = text.strip().replace(" ", "").replace(" ", "").replace("【", "").replace("】", "")
     try:
         # ======= 【1. 優先核心攔截：取消遊玩】 =======
-        if text == "取消遊玩":
+        if clean_text == "取消遊玩":
             if cancel_game and cancel_game(user_id): return
             send_message(user_id, "❌ 目前沒有正在進行中的互動小遊戲喔！")
             return
 
-        # ======= 【2. 安全防禦：防止同時開啟多個小遊戲 ＆ 重複洗開局】 =======
-        if text in ["終極密碼", "猜拳", "誰是臥底"]:
+        # ======= 【2. 安全防禦：遊戲開局攔截器】 =======
+        if clean_text in ["終極密碼", "猜拳", "誰是臥底"]:
             result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
             if not result.data:
                 send_message(user_id, "⚠️ 必須在聊天對話中才能開始遊戲喔！")
@@ -307,9 +307,9 @@ def handle_text(user_id, text):
                 send_message(user_id, "⚠️ 目前已有互動小遊戲（猜拳/終極密碼/誰是臥底）正在進行中，不能重複開啟！\n\n請先將當前遊戲玩完，或輸入「取消遊玩」結束遊戲後，才能開啟新局喔！")
                 return
 
-            if text == "終極密碼" and start_ultimate_password: start_ultimate_password(user_id, partner, n1, n2)
-            elif text == "猜拳" and start_rps: start_rps(user_id, partner, n1, n2)
-            elif text == "誰是臥底" and start_undercover: start_undercover(user_id, partner, n1, n2)
+            if clean_text == "終極密碼" and start_ultimate_password: start_ultimate_password(user_id, partner, n1, n2)
+            elif clean_text == "猜拳" and start_rps: start_rps(user_id, partner, n1, n2)
+            elif clean_text == "誰是臥底" and start_undercover: start_undercover(user_id, partner, n1, n2)
             return
 
         # ======= 【3. 外部化Pending指令處理】 =======
@@ -319,15 +319,15 @@ def handle_text(user_id, text):
                 return
 
         # ======= 【4. 行政/常規指令觸發】 =======
-        if text in ["開始", "0011"]: start_match(user_id); return
-        if text in ["取消配對", "0022"]:
+        if clean_text in ["開始", "0011"]: start_match(user_id); return
+        if clean_text in ["取消配對", "0022"]:
             if not supabase.table("waiting_users").select("*").eq("user_id", user_id).execute().data:
                 send_message(user_id, "❌ 目前沒有在等待配對")
                 return
             supabase.table("waiting_users").delete().eq("user_id", user_id).execute()
             send_message(user_id, "✅ 已取消配對"); return
 
-        if text in ["下一位", "0033", "離開", "0088", "封鎖", "0099", "檢舉", "0066"]:
+        if clean_text in ["下一位", "0033", "離開", "0088", "封鎖", "0099", "檢舉", "0066"]:
             result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
             if not result.data:
                 send_message(user_id, "目前沒有聊天對象")
@@ -336,34 +336,34 @@ def handle_text(user_id, text):
             
             supabase.table("pending_actions").delete().eq("user_id", user_id).execute()
             
-            if text in ["下一位", "0033"]:
+            if clean_text in ["下一位", "0033"]:
                 supabase.table("pending_actions").insert({"user_id": user_id, "action": "confirm_next"}).execute()
                 send_message(user_id, "⚠️ 確定要離開目前聊天室並尋找下一位嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否")
-            elif text in ["離開", "0088"]:
+            elif clean_text in ["離開", "0088"]:
                 supabase.table("pending_actions").insert({"user_id": user_id, "action": "confirm_leave"}).execute()
                 send_message(user_id, "⚠️ 確定要離開聊天室嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否")
-            elif text in ["封鎖", "0099"]:
+            elif clean_text in ["封鎖", "0099"]:
                 if supabase.table("blacklist").select("*").eq("user_id", user_id).eq("blocked_user_id", partner).execute().data:
                     send_message(user_id, "⚠️ 你已經封鎖過此人"); return
                 supabase.table("pending_actions").insert({"user_id": user_id, "action": "confirm_block"}).execute()
                 send_message(user_id, "⚠️ 確定要封鎖對方嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否")
-            elif text in ["檢舉", "0066"]:
+            elif clean_text in ["檢舉", "0066"]:
                 supabase.table("pending_actions").insert({"user_id": user_id, "action": "report_reason", "target_user_id": partner}).execute()
                 send_message(user_id, "🚨 請輸入檢舉原因\n\n如果不想檢舉了請輸入：返回")
             return
 
-        if text == "黑名單":
+        if clean_text == "黑名單":
             res = supabase.table("blacklist").select("*").eq("user_id", user_id).execute()
             if not res.data: send_message(user_id, "📭 黑名單目前是空的"); return
             send_message(user_id, "🚫 黑名單列表\n\n" + "".join([f"{i}. 使用者 {r['blocked_user_id'][-6:]}\n" for i, r in enumerate(res.data, start=1)])); return
 
-        if text == "解除封鎖":
+        if clean_text == "解除封鎖":
             res = supabase.table("blacklist").select("*").eq("user_id", user_id).execute()
             if not res.data: send_message(user_id, "📭 目前沒有封鎖任何人"); return
             send_message(user_id, "🔓 請輸入要解除封鎖的編號\n\n" + "".join([f"{i}. 使用者 {r['blocked_user_id'][-6:]}\n" for i, r in enumerate(res.data, start=1)]) + "\n例如：解除封鎖 1")
             return
 
-        if text.startswith("解除封鎖 "):
+        if clean_text.startswith("解除封鎖"):
             try: index = int(text.split()[1]) - 1
             except: send_message(user_id, "❌ 格式錯誤"); return
             res = supabase.table("blacklist").select("*").eq("user_id", user_id).execute()
@@ -371,7 +371,7 @@ def handle_text(user_id, text):
             supabase.table("blacklist").delete().eq("user_id", user_id).eq("blocked_user_id", res.data[index]["blocked_user_id"]).execute()
             send_message(user_id, "✅ 已成功解除封鎖"); return
 
-        if text in ["解除配對限制", "2222"]:
+        if clean_text in ["解除配對限制", "2222"]:
             supabase.table("recent_pairs").delete().or_(f"user1.eq.{user_id},user2.eq.{user_id}").execute()
             send_message(user_id, "✅ 已解除配對限制"); return
 
@@ -413,7 +413,6 @@ def webhook():
                             except: pass
                                 
                             if "text" in msg:
-                                # ✨ 管道 A 同步加入防洗版流量攔截機制
                                 if not check_rate_limit(sender_id, "text"): pass
                                 else: handle_text(sender_id, msg["text"])
                             if "attachments" in msg: handle_attachment(sender_id, msg["attachments"])
@@ -431,7 +430,6 @@ def webhook():
                             supabase.table("banned_users").delete().eq("user_id", sender_id).lt("expires_at", now_str).execute()
                         except: pass
 
-                        # 🚨 核心防禦：如果此人在黑名單內，計算剩餘時間並吐出警告，絕不 pass 裝死！
                         if supabase.table("banned_users").select("*").eq("user_id", sender_id).limit(1).execute().data:
                             ban_entry = supabase.table("banned_users").select("expires_at").eq("user_id", sender_id).limit(1).execute()
                             if ban_entry.data and ban_entry.data[0].get("expires_at"):
@@ -447,7 +445,6 @@ def webhook():
                             
                         message = messaging_event["message"]
                         if "text" in message:
-                            # 管道 B：正確執行攔截
                             if not check_rate_limit(sender_id, "text"): pass 
                             else: handle_text(sender_id, message["text"])
                         if "attachments" in message: handle_attachment(sender_id, message["attachments"])
