@@ -44,12 +44,13 @@ def handle_guess(user_id, text):
     
     # ⚙️ 修正：把全形的 ６６８８ 也加進來，防範手機輸入法鬼打牆
     if text in ["6688", "６６８８", "我想知道答案"]:
-        # 這裡會去撈答案並發送
         game_query = supabase.table("game_ultimate_password").select("*").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").limit(1).execute()
         if game_query.data:
             secret = game_query.data[0]["secret_number"]
             send_message(user_id, f"🔍 [測試模式] 目前的終極密碼答案是：【 {secret} 】")
-        return True
+            return True # ✅ 只有真的有終極密碼遊戲在進行，才攔截！
+        
+        return False # ✅ 如果現在沒在玩終極密碼，放行（Return False）讓 app.py 繼續往下查猜拳跟臥底！
 
     if not text.startswith("猜"): return False
 
