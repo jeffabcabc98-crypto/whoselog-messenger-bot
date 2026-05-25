@@ -320,7 +320,7 @@ def handle_text(user_id, text):
 
         # ======= 【4. 行政/常規指令觸發】 =======
         if clean_text in ["開始", "0011"]: start_match(user_id); return
-        if clean_text in ["取消配對", "0022"]:
+        if clean_text in ["取消配對", "11111"]:
             if not supabase.table("waiting_users").select("*").eq("user_id", user_id).execute().data:
                 send_message(user_id, "❌ 目前沒有在等待配對")
                 return
