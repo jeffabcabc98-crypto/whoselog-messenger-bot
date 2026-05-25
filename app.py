@@ -287,109 +287,114 @@ def start_match(user_id):
 # =========================
 def handle_text(user_id, text):
     text = text.strip()
+    
+    # ======= 【⚙️ 核心修正：局域匯入，徹底阻斷循環死結】 =======
     try:
-        # ======= 【1. 優先核心攔截：取消遊玩】 =======
-        if text == "取消遊玩":
-            if cancel_game and cancel_game(user_id): return
-            send_message(user_id, "❌ 目前沒有正在進行中的互動小遊戲喔！")
+        from game_modules import start_rps, handle_rps_move, start_undercover, handle_undercover_vote, cancel_game
+    except ImportError:
+        print("⚠️ [內部警告] 暫時無法加載 game_modules.py！")
+        start_rps = handle_rps_move = start_undercover = handle_undercover_vote = cancel_game = None
+
+    # ======= 【1. 管理員廣播與指令系統】 =======
+    admin_ids = ["6564639913619557", "9563503117006764"]
+    if user_id in admin_ids:
+        if text.startswith("廣播 "):
+            bc_msg = text.replace("廣播 ", "").strip()
+            all_users = supabase.table("chat_pairs").select("user_id").execute()
+            sent_ids = set()
+            for u in all_users.data:
+                uid = u["user_id"]
+                if uid not in sent_ids:
+                    try: send_message(uid, f"📢 【系統廣播】\n\n{bc_msg}", tag="ACCOUNT_UPDATE"); sent_ids.add(uid)
+                    except: pass
+            send_message(user_id, f"✅ 廣播發送完畢，共發送給 {len(sent_ids)} 位用戶。")
+            return
+            
+        if text.startswith("解封 "):
+            target = text.replace("解封 ", "").strip()
+            supabase.table("banned_users").delete().eq("user_id", target).execute()
+            supabase.table("rate_limits").delete().eq("user_id", target).execute()
+            send_message(user_id, f"✅ 已手動解除用戶【{target}】的洗版封鎖狀態。")
             return
 
-        # ======= 【2. 安全防禦：防止同時開啟多個小遊戲 ＆ 重複洗開局】 =======
-        if text in ["終極密碼", "猜拳", "誰是臥底"]:
-            result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
-            if not result.data:
-                send_message(user_id, "⚠️ 必須在聊天對話中才能開始遊戲喔！")
-                return
-                
-            partner, n1, n2 = result.data[0]["partner_id"], result.data[0]["nickname"], result.data[0]["partner_nickname"]
-            
-            has_bomb = supabase.table("game_ultimate_password").select("id").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute().data
-            has_rps = supabase.table("game_rps").select("id").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute().data
-            has_spy = supabase.table("game_undercover").select("id").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute().data
-            
-            if has_bomb or has_rps or has_spy:
-                send_message(user_id, "⚠️ 目前已有互動小遊戲（猜拳/終極密碼/誰是臥底）正在進行中，不能重複開啟！\n\n請先將當前遊戲玩完，或輸入「取消遊玩」結束遊戲後，才能開啟新局喔！")
-                return
+    # ======= 【2. 優先核心攔截：取消遊玩】 =======
+    if text == "取消遊玩":
+        if cancel_game and cancel_game(user_id): return
+        send_message(user_id, "❌ 目前沒有正在進行中的互動小遊戲喔！")
+        return
 
-            if text == "終極密碼" and start_ultimate_password: start_ultimate_password(user_id, partner, n1, n2)
-            elif text == "猜拳" and start_rps: start_rps(user_id, partner, n1, n2)
-            elif text == "誰是臥底" and start_undercover: start_undercover(user_id, partner, n1, n2)
-            return
-
-        # ======= 【3. 外部化Pending指令處理】 =======
-        pending = supabase.table("pending_actions").select("*").eq("user_id", user_id).limit(1).execute()
-        if pending.data:
-            if handle_pending_actions and handle_pending_actions(user_id, text, pending.data[0]["action"], pending.data[0]):
-                return
-
-        # ======= 【4. 行政/常規指令觸發】 =======
-        if text in ["開始", "0011"]: start_match(user_id); return
-        if text in ["取消配對", "0022"]:
-            if not supabase.table("waiting_users").select("*").eq("user_id", user_id).execute().data:
-                send_message(user_id, "❌ 目前沒有在等待配對")
-                return
-            supabase.table("waiting_users").delete().eq("user_id", user_id).execute()
-            send_message(user_id, "✅ 已取消配對"); return
-
-        if text in ["下一位", "0033", "離開", "0088", "封鎖", "0099", "檢舉", "0066"]:
-            result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
-            if not result.data:
-                send_message(user_id, "目前沒有聊天對象")
-                return
-            partner = result.data[0]["partner_id"]
-            
-            supabase.table("pending_actions").delete().eq("user_id", user_id).execute()
-            
-            if text in ["下一位", "0033"]:
-                supabase.table("pending_actions").insert({"user_id": user_id, "action": "confirm_next"}).execute()
-                send_message(user_id, "⚠️ 確定要離開目前聊天室並尋找下一位嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否")
-            elif text in ["離開", "0088"]:
-                supabase.table("pending_actions").insert({"user_id": user_id, "action": "confirm_leave"}).execute()
-                send_message(user_id, "⚠️ 確定要離開聊天室嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否")
-            elif text in ["封鎖", "0099"]:
-                if supabase.table("blacklist").select("*").eq("user_id", user_id).eq("blocked_user_id", partner).execute().data:
-                    send_message(user_id, "⚠️ 你已經封鎖過此人"); return
-                supabase.table("pending_actions").insert({"user_id": user_id, "action": "confirm_block"}).execute()
-                send_message(user_id, "⚠️ 確定要封鎖對方嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否")
-            elif text in ["檢舉", "0066"]:
-                supabase.table("pending_actions").insert({"user_id": user_id, "action": "report_reason", "target_user_id": partner}).execute()
-                send_message(user_id, "🚨 請輸入檢舉原因\n\n如果不想檢舉了請輸入：返回")
-            return
-
-        if text == "黑名單":
-            res = supabase.table("blacklist").select("*").eq("user_id", user_id).execute()
-            if not res.data: send_message(user_id, "📭 黑名單目前是空的"); return
-            send_message(user_id, "🚫 黑名單列表\n\n" + "".join([f"{i}. 使用者 {r['blocked_user_id'][-6:]}\n" for i, r in enumerate(res.data, start=1)])); return
-
-        if text == "解除封鎖":
-            res = supabase.table("blacklist").select("*").eq("user_id", user_id).execute()
-            if not res.data: send_message(user_id, "📭 目前沒有封鎖任何人"); return
-            send_message(user_id, "🔓 請輸入要解除封鎖的編號\n\n" + "".join([f"{i}. 使用者 {r['blocked_user_id'][-6:]}\n" for i, r in enumerate(res.data, start=1)]) + "\n例如：解除封鎖 1")
-            return
-
-        if text.startswith("解除封鎖 "):
-            try: index = int(text.split()[1]) - 1
-            except: send_message(user_id, "❌ 格式錯誤"); return
-            res = supabase.table("blacklist").select("*").eq("user_id", user_id).execute()
-            if index < 0 or index >= len(res.data): send_message(user_id, "❌ 找不到此編號"); return
-            supabase.table("blacklist").delete().eq("user_id", user_id).eq("blocked_user_id", res.data[index]["blocked_user_id"]).execute()
-            send_message(user_id, "✅ 已成功解除封鎖"); return
-
-        if text in ["解除配對限制", "2222"]:
-            supabase.table("recent_pairs").delete().or_(f"user1.eq.{user_id},user2.eq.{user_id}").execute()
-            send_message(user_id, "✅ 已解除配對限制"); return
-
-        # ======= 【5. 聊天普通轉發與所有小遊戲輸入攔截】 =======
+    # ======= 【3. 安全防禦：防止同時開啟多個小遊戲 ＆ 重複洗開局】 =======
+    if text in ["終極密碼", "猜拳", "誰是臥底"]:
         result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
-        if result.data:
-            if handle_guess and handle_guess(user_id, text.strip()): return
-            if handle_rps_move and handle_rps_move(user_id, text.strip()): return
-            if handle_undercover_vote and handle_undercover_vote(user_id, text.strip()): return
-            send_message(result.data[0]["partner_id"], f"{result.data[0]['nickname']}：{text}", tag="ACCOUNT_UPDATE")
-        else:
-            send_help_menu(user_id)
-    except Exception as e:
-        print("HANDLE_TEXT ERROR:", e)
+        if not result.data:
+            send_message(user_id, "⚠️ 必須在聊天對話中才能開始遊戲喔！")
+            return
+            
+        partner = result.data[0]["partner_id"]
+        n1 = result.data[0]["nickname"]
+        
+        # 讀取對方的暱稱（安全防禦機制）
+        part_res = supabase.table("chat_pairs").select("nickname").eq("user_id", partner).limit(1).execute()
+        n2 = part_res.data[0]["nickname"] if part_res.data else "路人"
+        
+        has_bomb = supabase.table("game_ultimate_password").select("id").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute().data
+        has_rps = supabase.table("game_rps").select("id").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute().data
+        has_spy = supabase.table("game_undercover").select("id").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute().data
+        
+        if has_bomb or has_rps or has_spy:
+            send_message(user_id, "⚠️ 目前已有互動小遊戲（猜拳/終極密碼/誰是臥底）正在進行中，不能重複開啟！\n\n請先將當前遊戲玩完，或輸入「取消遊玩」結束遊戲後，才能開啟新局喔！")
+            return
+
+        if text == "終極密碼" and start_ultimate_password: start_ultimate_password(user_id, partner, n1, n2)
+        elif text == "猜拳" and start_rps: start_rps(user_id, partner, n1, n2)
+        elif text == "誰是臥底" and start_undercover: start_undercover(user_id, partner, n1, n2)
+        return
+
+    # ======= 【4. 外部化Pending指令處理（離開/下一位確認狀態）】 =======
+    pending = supabase.table("pending_actions").select("*").eq("user_id", user_id).limit(1).execute()
+    if pending.data:
+        if handle_pending_actions and handle_pending_actions(user_id, text, pending.data[0]["action"], pending.data[0]):
+            return
+
+    # ======= 【5. 常規大廳/導向指令】 =======
+    if text in ["開始", "0011"]:
+        start_match(user_id)
+        return
+        
+    if text == "離開":
+        result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
+        if not result.data:
+            send_message(user_id, "❌ 你目前沒有配對對象。請輸入「開始」進行配對。")
+            return
+        supabase.table("pending_actions").insert({"user_id": user_id, "action": "confirm_leave"}).execute()
+        send_message(user_id, "⚠️ 確定要離開目前聊天室嗎？\n\n請回覆：\n1️⃣ 或 是\n2️⃣ 或 否")
+        return
+        
+    if text in ["檢舉", "下一位"]:
+        result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
+        if not result.data:
+            send_message(user_id, "❌ 你目前沒有配對對象。")
+            return
+        act = "confirm_report" if text == "檢舉" else "confirm_next"
+        prompt = "⚠️ 確定要檢舉對方嗎？" if text == "檢舉" else "⚠️ 確定要跳過此人、尋找下一位嗎？"
+        supabase.table("pending_actions").insert({"user_id": user_id, "action": act}).execute()
+        send_message(user_id, f"{prompt}\n\n請回覆：\n1️⃣ 或 是\n2️⃣ 或 否")
+        return
+
+    # ======= 【6. 聊天普通轉發與所有小遊戲輸入攔截】 =======
+    result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
+    if result.data:
+        # 小遊戲內部輸入攔截（如果是在小遊戲進行中，優先吞掉訊息）
+        if handle_guess and handle_guess(user_id, text.strip()): return
+        if handle_rps_move and handle_rps_move(user_id, text.strip()): return
+        if handle_undercover_vote and handle_undercover_vote(user_id, text.strip()): return
+        
+        # 若無小遊戲攔截，執行常規匿名訊息轉發
+        send_message(result.data[0]["partner_id"], f"{result.data[0]['nickname']}：{text}", tag="ACCOUNT_UPDATE")
+        return
+
+    # ======= 【7. 未配對時的預設提示】 =======
+    send_message(user_id, "💡 目前沒有配對對象。請輸入「開始」啟動匿名配對！")
 
 # =========================
 # Webhook 驗證與接收
