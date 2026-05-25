@@ -33,7 +33,7 @@ def handle_rps_move(user_id, text):
     from app import send_message
     
     # 🕵️‍♂️ 【新增：猜拳偷看密碼】
-    if text == "6688":
+    if text in ["6688", "６６８８"]:
         game = supabase.table("game_rps").select("*").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").limit(1).execute().data
         if game:
             g = game[0]
@@ -112,9 +112,8 @@ def handle_undercover_vote(user_id, text):
     from app import send_message
     
     # 🕵️‍♂️ 【新增：臥底偷看密碼】
-    if text == "6688":
-        game = supabase.table("game_undercover").select("*").eq("is_active", True).or_(f"user_id.eq.{user_id},user_id.eq.{partner_id:=partner_id}").execute().data
-        # 修正：上面這行因為拼寫小失誤，我直接幫你改成更穩定的查詢方式：
+    if text in ["6688", "６６８８"]: # ⚙️ 順便把全形 ６６８８ 加進來無敵防呆
+        # 修正：改成更穩定的查詢方式：
         game = supabase.table("game_undercover").select("*").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").limit(1).execute().data
         if game:
             g = game[0]
