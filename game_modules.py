@@ -32,7 +32,7 @@ def start_rps(user_id, partner_id, nickname1, nickname2):
 def handle_rps_move(user_id, text):
     from app import send_message
     
-    # 🕵️‍♂️ 【新增：猜拳偷看密碼】
+    # 🕵️‍♂️ 【猜拳偷看密碼】
     if text in ["6688", "６６８８"]:
         game = supabase.table("game_rps").select("*").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").limit(1).execute().data
         if game:
@@ -65,31 +65,75 @@ def handle_rps_move(user_id, text):
     p1_move = check_now.data[0]["user_move"]
     p2_move = check_now.data[0]["partner_move"]
 
-    pair_query = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
-    my_name = pair_query.data[0]["nickname"] if pair_query.data else "神秘人"
-    partner_name = pair_query.data[0]["partner_nickname"] if pair_query.data else "神秘人"
-
     if not p1_move or not p2_move:
         send_message(user_id, f"✅ 你秘密出了【{move}】，正在等待對方出拳...")
-        send_message(partner_id, f"⏳ 提示：【{my_name}】已經出拳囉！快輸入你的出拳吧！", tag="ACCOUNT_UPDATE")
+        send_message(partner_id, f"⏳ 提示：對方已經出拳囉！快輸入你的出拳吧！", tag="ACCOUNT_UPDATE")
         return True
 
+    # 雙方都出拳了，關閉遊戲
     supabase.table("game_rps").update({"is_active": False}).eq("id", game_id).execute()
     
-    p1_name = my_name if user_id == p1 else partner_name
-    p2_name = partner_name if user_id == p1 else my_name
+    # 精準定義誰是我的拳、誰是物伴的拳
+    my_move = p1_move if user_id == p1 else p2_move
+    partner_move = p2_move if user_id == p1 else p1_move
+
+    # ==========================================================
+    # 🎯 【核心修正：拆分「你」與「對方」的客製化勝負訊息與勉勵話語】
+    # ==========================================================
     
-    result_msg = f"💥 猜拳結果揭曉！ 💥\n\n【{p1_name}】出了：{p1_move}\n【{p2_name}】出了：{p2_move}\n\n"
-    
-    if p1_move == p2_move:
-        result_msg += "🤝 竟然平手！太有默契了吧！想再玩一次請重新輸入「猜拳」"
-    elif (p1_move == "石頭" and p2_move == "剪刀") or (p1_move == "剪刀" and p2_move == "布") or (p1_move == "布" and p2_move == "石頭"):
-        result_msg += f"👑 恭喜【{p1_name}】贏得了這場勝利！"
-    else:
-        result_msg += f"👑 恭喜【{p2_name}】贏得了這場勝利！"
+    # 狀況 A：平手
+    if my_move == partner_move:
+        msg_to_me = (
+            f"💥 猜拳結果揭曉！ 💥\n\n"
+            f"【 📢 你 】出了：{my_move}\n"
+            f"【 👤 對方 】出了：{partner_move}\n\n"
+            f"🤝 竟然平手！太有默契了吧！想再玩一次請重新輸入「猜拳」"
+        )
+        msg_to_partner = msg_to_me  # 平手時雙方視角文字剛好對稱，可直接複用
+
+    # 狀況 B：我贏了（代表對方輸了）
+    elif (my_move == "石頭" and partner_move == "剪刀") or \
+         (my_move == "剪刀" and partner_move == "布") or \
+         (my_move == "布" and partner_move == "石頭"):
         
-    send_message(p1, result_msg)
-    send_message(p2, result_msg, tag="ACCOUNT_UPDATE")
+        msg_to_me = (
+            f"💥 猜拳結果揭曉！ 💥\n\n"
+            f"【 👑 你 】出了：{my_move}\n"
+            f"【 👤 對方 】出了：{partner_move}\n\n"
+            f"🎉 恭喜【你】贏得了這場勝利！運氣爆棚太強啦！"
+        )
+        msg_to_partner = (
+            f"💥 猜拳結果揭曉！ 💥\n\n"
+            f"【 📢 你 】出了：{partner_move}\n"
+            f"【 👑 對方 】出了：{my_move}\n\n"
+            f"🥲 哎呀不小心輸掉了... 沒關係，勝敗乃兵家常事，再開一局贏回來！"
+        )
+
+    # 狀況 C：我輸了（代表對方贏了）
+    else:
+        msg_to_me = (
+            f"💥 猜拳結果揭曉！ 💥\n\n"
+            f"【 📢 你 】出了：{my_move}\n"
+            f"【 👑 對方 】出了：{partner_move}\n\n"
+            f"🥲 哎呀不小心輸掉了... 沒關係，勝敗乃兵家常事，再開一局贏回來！"
+        )
+        msg_to_partner = (
+            f"💥 猜拳結果揭曉！ 💥\n\n"
+            f"【 👑 你 】出了：partner_move\n"
+            f"【 👤 對方 】出了：{my_move}\n\n"
+            f"🎉 恭喜【你】贏得了這場勝利！運氣爆棚太強啦！"
+        )
+        # 修正 partner 視角的變數對齊
+        msg_to_partner = (
+            f"💥 猜拳結果揭曉！ 💥\n\n"
+            f"【 👑 你 】出了：{partner_move}\n"
+            f"【 👤 對方 】出了：{my_move}\n\n"
+            f"🎉 恭喜【你】贏得了這場勝利！運氣爆棚太強啦！"
+        )
+
+    # 分別發送給當前猜拳玩家與夥伴
+    send_message(user_id, msg_to_me)
+    send_message(partner_id, msg_to_partner, tag="ACCOUNT_UPDATE")
     return True
 
 # ==========================================
@@ -111,9 +155,8 @@ def start_undercover(user_id, partner_id, nickname1, nickname2):
 def handle_undercover_vote(user_id, text):
     from app import send_message
     
-    # 🕵️‍♂️ 【新增：臥底偷看密碼】
-    if text in ["6688", "６６８８"]: # ⚙️ 順便把全形 ６６８８ 加進來無敵防呆
-        # 修正：改成更穩定的查詢方式：
+    # 🕵️‍♂️ 【臥底偷看密碼】
+    if text in ["6688", "６６８８"]: 
         game = supabase.table("game_undercover").select("*").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").limit(1).execute().data
         if game:
             g = game[0]
