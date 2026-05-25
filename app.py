@@ -5,7 +5,7 @@ import random
 from datetime import datetime, timedelta, timezone
 from supabase import create_client
 
-# ======= 【安全防禦：動態安全匯入所有外部模組，防止找不到檔案崩潰】 =======
+# ======= 【安全防禦：動態安全匯入所有外部模組】 =======
 try:
     from number_bomb import start_ultimate_password, handle_guess
 except ImportError:
@@ -40,9 +40,8 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # 🛡️ 防洗版（已整合：30秒限5次 ＆ 自動禁言60秒機制）
 # ==========================================
 def check_rate_limit(user_id, msg_type):
-    # 1. 精準修改：文字(text)設定為 30 秒內只能傳 5 次
     limits = {
-        "text": (30, 5),      
+        "text": (30, 10),      
         "image": (60, 3),
         "gif": (60, 2),
         "video": (60, 1),
@@ -52,28 +51,25 @@ def check_rate_limit(user_id, msg_type):
     now = datetime.now(timezone.utc)
     since_time = (now - timedelta(seconds=seconds)).isoformat()
 
-    # 2. 撈取該用戶在此區間內傳送的次數
+    # 撈取該用戶在此區間內傳送的次數
     result = supabase.table("rate_limits").select("*").eq("user_id", user_id).eq("msg_type", msg_type).gte("created_at", since_time).execute()
     
     if len(result.data) >= max_count:
-        # 🚨【核心機制觸發】：當文字傳送次數超過限制，發動「自動禁言 60 秒」
         if msg_type == "text":
-            unban_time = (now + timedelta(seconds=60)).isoformat() # 計算 60 秒後的解封時間
+            unban_time = (now + timedelta(seconds=60)).isoformat() 
             try:
-                # 將此壞壞用戶塞入你的 banned_users 資料表，並標記解封時間
                 supabase.table("banned_users").upsert({
                     "user_id": user_id,
                     "reason": "文字傳送過快，系統自動禁言60秒",
-                    "expires_at": unban_time  # 注意：請確認你的 banned_users 表裡有無 expires_at 欄位
+                    "expires_at": unban_time  
                 }).execute()
                 
-                # 發送給被禁言用戶的當頭棒喝通知
+                # 這裡會確實發送警告
                 send_message(user_id, "🚨 警告：偵測到你傳送文字速度過快，已被系統自動禁言 60 秒！請稍候再試。")
             except Exception as ban_err:
                 print("AUTOMATIC BAN ERROR:", ban_err)
         return False
 
-    # 3. 如果沒超過限制，正常塞入這次的紀錄
     supabase.table("rate_limits").insert({"user_id": user_id, "msg_type": msg_type}).execute()
     return True
 
@@ -411,14 +407,15 @@ def webhook():
                         for msg in value["messages"]:
                             sender_id = msg["from"]["id"]
                             
-                            # ✨【自動自動解封過期用戶機制】：在收信當下，先自動清除所有已過期的封鎖
                             try:
                                 now_str = datetime.now(timezone.utc).isoformat()
                                 supabase.table("banned_users").delete().eq("user_id", sender_id).lt("expires_at", now_str).execute()
-                            except:
-                                pass
+                            except: pass
                                 
-                            if "text" in msg: handle_text(sender_id, msg["text"])
+                            if "text" in msg:
+                                # ✨ 管道 A 同步加入防洗版流量攔截機制
+                                if not check_rate_limit(sender_id, "text"): pass
+                                else: handle_text(sender_id, msg["text"])
                             if "attachments" in msg: handle_attachment(sender_id, msg["attachments"])
             if "messaging" in entry:
                 for messaging_event in entry.get("messaging", []):
@@ -429,15 +426,13 @@ def webhook():
                         elif payload in ["START_CHAT", "LEAVE_CHAT"]: handle_text(sender_id, "開始" if payload == "START_CHAT" else "離開")
 
                     if "message" in messaging_event:
-                        # ✨【自動解封過期用戶機制】：Facebook 管道也同步做自動過期清理
                         try:
                             now_str = datetime.now(timezone.utc).isoformat()
                             supabase.table("banned_users").delete().eq("user_id", sender_id).lt("expires_at", now_str).execute()
-                        except:
-                            pass
+                        except: pass
 
+                        # 🚨 核心防禦：如果此人在黑名單內，計算剩餘時間並吐出警告，絕不 pass 裝死！
                         if supabase.table("banned_users").select("*").eq("user_id", sender_id).limit(1).execute().data:
-                            # 讀取剩餘時間提示玩家
                             ban_entry = supabase.table("banned_users").select("expires_at").eq("user_id", sender_id).limit(1).execute()
                             if ban_entry.data and ban_entry.data[0].get("expires_at"):
                                 try:
@@ -446,13 +441,14 @@ def webhook():
                                     if rem > 0:
                                         send_message(sender_id, f"🚫 你的帳號目前處於洗版禁言狀態，還剩 {rem} 秒解封。")
                                         continue
-                                except:
-                                    pass
-                            send_message(sender_id, "🚫 你的帳號已被停權"); continue
+                                except: pass
+                            send_message(sender_id, "🚫 你的帳號已被停權")
+                            continue
                             
                         message = messaging_event["message"]
                         if "text" in message:
-                            if not check_rate_limit(sender_id, "text"): pass # 觸發禁言通知後，在此直接攔截不往下跑
+                            # 管道 B：正確執行攔截
+                            if not check_rate_limit(sender_id, "text"): pass 
                             else: handle_text(sender_id, message["text"])
                         if "attachments" in message: handle_attachment(sender_id, message["attachments"])
     return "ok", 200
