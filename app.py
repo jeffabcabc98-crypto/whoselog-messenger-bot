@@ -282,7 +282,7 @@ def start_match(user_id):
 def handle_text(user_id, text):
     text = text.strip()
     
-    # 🎯 把載入遊戲的動作完美放在這裡，並且空格一律對齊！
+    # 🎯 就是這裡！一定要加上 try: 這三個字與冒號
     try:
         from game_modules import start_rps, handle_rps_move, start_undercover, handle_undercover_vote, cancel_game
     except ImportError:
