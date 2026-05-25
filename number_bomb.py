@@ -34,7 +34,7 @@ def start_ultimate_password(user_id, partner_id, nickname1, nickname2):
     start_msg = (
         f"🎮 終極密碼遊戲開始！範圍 1 ~ 100\n\n"
         f"👉 系統決定由【{starter_name}】先開始！\n"
-        "請輸入，舉例：猜 50"
+        "請輸入，如果要猜50的話要照格式，舉例:猜 50(一定要輸入:猜+空格+猜的數字)不能單一數字"
     )
     send_message(user_id, start_msg)
     send_message(partner_id, start_msg, tag="ACCOUNT_UPDATE")
@@ -61,7 +61,7 @@ def handle_guess(user_id, text):
     
     # 🚨【核心修正】：強制檢查回合鎖定
     if game["current_turn_user_id"] != user_id:
-        send_message(user_id, "⚠️ 還沒輪到你喔！請等待對方先猜。")
+        send_message(user_id, "⚠️ 還沒輪到你喔！請等待對方先猜。如果要猜50的話要照格式，舉例:猜 50(一定要輸入:猜+空格+猜的數字)不能單一數字")
         return True 
 
     # 取出後面的純數字
@@ -90,7 +90,7 @@ def handle_guess(user_id, text):
             "min_range": min_r, "max_range": max_r, "current_turn_user_id": partner_id_db
         }).eq("id", game["id"]).execute()
 
-        update_msg = f"🎲 猜了 {guess}，範圍：{min_r} ~ {max_r}\n輪到對方猜了！"
+        update_msg = f"🎲 猜了 {guess}，範圍：{min_r} ~ {max_r}\n輪到對方猜了，如果要猜50的話要照格式，舉例:猜 50(一定要輸入:猜+空格+猜的數字)不能單一數字！"
         send_message(user_id, update_msg)
         send_message(partner_id_db, update_msg, tag="ACCOUNT_UPDATE")
         return True
