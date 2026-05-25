@@ -13,13 +13,9 @@ def start_ultimate_password(user_id, partner_id, nickname1, nickname2):
     
     secret = random.randint(1, 100)
     
-    # 隨機決定誰先開始，並存入資料庫
-    if random.choice([True, False]):
-        starter_id = user_id
-        starter_name = nickname1
-    else:
-        starter_id = partner_id
-        starter_name = nickname2
+    # 隨機決定誰先開始（True 代表 user_id 先，False 代表 partner_id 先）
+    is_user_starter = random.choice([True, False])
+    starter_id = user_id if is_user_starter else partner_id
     
     supabase.table("game_ultimate_password").insert({
         "user_id": user_id,
@@ -31,15 +27,37 @@ def start_ultimate_password(user_id, partner_id, nickname1, nickname2):
         "current_turn_user_id": starter_id  # 👈 鎖定第一回合
     }).execute()
     
-    start_msg = (
+    # ==========================================================
+    # 🎯 【客製化第一回合提示：區分「你」與「對方」】
+    # ==========================================================
+    if is_user_starter:
+        # 如果是 user_id 先開局
+        msg_for_user = f"👉 系統決定由【 📢 你 】先開始！"
+        msg_for_partner = f"👉 系統決定由【 👤 對方（{nickname1}） 】先開始！"
+    else:
+        # 如果是 partner_id 先開局
+        msg_for_user = f"👉 系統決定由【 👤 對方（{nickname2}） 】先開始！"
+        msg_for_partner = f"👉 系統決定由【 📢 你 】先開始！"
+
+    # 組裝發給 user_id 的完整訊息
+    start_msg_user = (
         f"🎮 終極密碼遊戲開始！範圍 1 ~ 100\n\n"
-        f"👉 系統決定由【{starter_name}】先開始！\n"
-        f"請在對話框直接輸入：猜+空格+數字 (例如：猜 50)\n\n"
+        f"{msg_for_user}\n"
+        f"請在對話框直接輸入：猜 數字 (例如：猜 50)\n\n"
         f"⚠️ 提示：若中途不想玩了，任一方輸入「取消遊玩」即可結束遊戲。"
     )
-    send_message(user_id, start_msg)
-    send_message(partner_id, start_msg, tag="ACCOUNT_UPDATE")
 
+    # 組裝發給 partner_id 的完整訊息
+    start_msg_partner = (
+        f"🎮 終極密碼遊戲開始！範圍 1 ~ 100\n\n"
+        f"{msg_for_partner}\n"
+        f"請在對話框直接輸入：猜 數字 (例如：猜 50)\n\n"
+        f"⚠️ 提示：若中途不想玩了，任一方輸入「取消遊玩」即可結束遊戲。"
+    )
+    
+    # 分別發送客製化後的訊息
+    send_message(user_id, start_msg_user)
+    send_message(partner_id, start_msg_partner, tag="ACCOUNT_UPDATE")
 def handle_guess(user_id, text):
     from app import send_message, supabase
     
