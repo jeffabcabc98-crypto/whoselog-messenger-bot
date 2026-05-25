@@ -42,8 +42,13 @@ def start_ultimate_password(user_id, partner_id, nickname1, nickname2):
 def handle_guess(user_id, text):
     from app import send_message 
     
-    if text in ["6688", "我想知道答案"]:
-        # ... (此處維持原本偷看答案邏輯) ...
+    # ⚙️ 修正：把全形的 ６６８８ 也加進來，防範手機輸入法鬼打牆
+    if text in ["6688", "６６８８", "我想知道答案"]:
+        # 這裡會去撈答案並發送
+        game_query = supabase.table("game_ultimate_password").select("*").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").limit(1).execute()
+        if game_query.data:
+            secret = game_query.data[0]["secret_number"]
+            send_message(user_id, f"🔍 [測試模式] 目前的終極密碼答案是：【 {secret} 】")
         return True
 
     if not text.startswith("猜"): return False
