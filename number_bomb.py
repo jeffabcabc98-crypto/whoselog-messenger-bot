@@ -52,19 +52,19 @@ def start_ultimate_password(user_id, partner_id, nickname1, nickname2):
         f"🎮 終極密碼遊戲開始！範圍 1 ~ 100\n\n"
         f"{msg_for_partner}\n"
         f"請在對話框直接輸入：猜+空格+數字 (例如：猜 50)\n\n"
-        f"⚠️ 提示：若中途不想玩了，任一方輸入「取消遊玩」即可結束遊戲。"
+        f"⚠️ 提示：若中途不想玩了 nudge，任一方輸入「取消遊玩」即可結束遊戲。"
     )
     
     # 分別發送客製化後的訊息
     send_message(user_id, start_msg_user)
     send_message(partner_id, start_msg_partner, tag="ACCOUNT_UPDATE")
+
 def handle_guess(user_id, text):
     from app import send_message, supabase
     
     # 🕵️‍♂️ 【安全攔截：如果對方已經離開，自動清理殘留遊戲】
     if text == "取消遊玩":
-        # 這裡不處理，交給外部的通用取消邏輯攔截！
-        return False # ✅ 如果現在沒在玩終極密碼，放行（Return False）讓 app.py 繼續往下查猜拳跟臥底！
+        return False 
 
     if not text.startswith("猜"): return False
 
@@ -91,26 +91,20 @@ def handle_guess(user_id, text):
     partner_id_db = game["user_id"] if game["partner_id"] == user_id else game["partner_id"]
 
     # ==========================================================
-    # 🚨 【新增：超範圍防呆防護網】
-    # 既然範圍是 min_r ~ max_r，猜的值就必須在這個開區間內（不能<=下限，不能>=上限）
+    # 🚨 【超範圍防呆防護網】
     # ==========================================================
     if guess <= min_r or guess >= max_r:
         send_message(user_id, f"⚠️ 超出當前有效範圍！目前範圍是 【{min_r} ~ {max_r}】，請重新輸入在這個範圍內的數字。")
         return True
-    # ==========================================================
 
     # 判定 1：直接猜中！遊戲結束
     if guess == secret:
-        # 撈出雙方暱稱
-        p1_query = supabase.table("chat_pairs").select("nickname").eq("user_id", user_id).limit(1).execute()
-        my_name = p1_query.data[0]["nickname"] if p1_query.data else "某人"
-        
-        win_msg = f"💥 爆炸了！【{my_name}】猜中了密碼 【{secret}】！遊戲結束 💀"
-        send_message(user_id, win_msg)
-        send_message(partner_id_db, win_msg, tag="ACCOUNT_UPDATE")
-        
         # 關閉遊戲
         supabase.table("game_ultimate_password").update({"is_active": False}).eq("id", game["id"]).execute()
+        
+        # 傳送客製化的獲勝/爆炸通知
+        send_message(user_id, f"💥 爆炸了！【 🔴 你 】猜中了密碼 【{secret}】！遊戲結束 💀")
+        send_message(partner_id_db, f"💥 爆炸了！【 🟢 對方 】猜中了密碼 【{secret}】！恭喜你活下來了 🎉", tag="ACCOUNT_UPDATE")
         return True
 
     # 判定 2：沒猜中，更新最新範圍並切換回合
@@ -128,15 +122,26 @@ def handle_guess(user_id, text):
         "current_turn_user_id": partner_id_db  # 👈 切換回合給對方
     }).eq("id", game["id"]).execute()
 
-    # 廣播最新戰況
-    p1_query = supabase.table("chat_pairs").select("nickname").eq("user_id", user_id).limit(1).execute()
-    p2_query = supabase.table("chat_pairs").select("nickname").eq("user_id", partner_id_db).limit(1).execute()
-    my_name = p1_query.data[0]["nickname"] if p1_query.data else "某人"
-    partner_name = p2_query.data[0]["nickname"] if p2_query.data else "對方"
-
-    progress_msg = f"🎲 【{my_name}】猜了 {guess}！沒中！\n📉 最新範圍縮小為：【 {new_min} ~ {new_max} 】\n\n下一回合輪到 👉【{partner_name}】"
+    # ==========================================================
+    # 🎯 【核心修正：拆分「你」與「對方」的戰況廣播訊息】
+    # ==========================================================
     
-    send_message(user_id, progress_msg)
-    send_message(partner_id_db, progress_msg, tag="ACCOUNT_UPDATE")
+    # 1. 給剛猜完的人（也就是目前的 user_id）看到的訊息
+    msg_for_me = (
+        f"🎲 【 📢 你 】猜了 {guess}！沒中！\n"
+        f"📉 最新範圍縮小為：【 {new_min} ~ {new_max} 】\n\n"
+        f"⏳ 下一回合輪到 👉【 👤 對方 】填寫"
+    )
+    
+    # 2. 給正在等待的人（也就是對方的 partner_id_db）看到的訊息
+    msg_for_partner = (
+        f"🎲 【 👤 對方 】猜了 {guess}！沒中！\n"
+        f"📉 最新範圍縮小為：【 {new_min} ~ {new_max} 】\n\n"
+        f"⚔️ 下一回合輪到 👉【 📢 你 】出題囉！請輸入猜數字"
+    )
+    
+    # 分別投遞客製化訊息
+    send_message(user_id, msg_for_me)
+    send_message(partner_id_db, msg_for_partner, tag="ACCOUNT_UPDATE")
     
     return True
