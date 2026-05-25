@@ -137,7 +137,7 @@ def handle_guess(user_id, text):
     msg_for_partner = (
         f"【 👤 對方 】猜了 {guess}！沒中！\n"
         f"📉 範圍縮小為：【 {new_min} ~ {new_max} 】\n\n"
-        f"⚔️ 下一回合輪到 👉【 📢 你 】出題囉！請輸入:猜+數字"
+        f"⚔️ 這回合輪到 👉【 📢 你 】出題囉！請輸入:猜+數字"
     )
     
     # 分別投遞客製化訊息
