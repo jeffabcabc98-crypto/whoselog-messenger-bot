@@ -12,13 +12,6 @@ except ImportError:
     print("⚠️ [警告] 伺服器暫時找不到 number_bomb.py 模組！")
     start_ultimate_password = None
     handle_guess = None
-
-try:
-    from game_modules import start_rps, handle_rps_move, start_undercover, handle_undercover_vote, cancel_game
-except ImportError:
-    print("⚠️ [警告] 伺服器暫時找不到 game_modules.py 模組！")
-    start_rps = handle_rps_move = start_undercover = handle_undercover_vote = cancel_game = None
-
 try:
     from actions import handle_pending_actions
 except ImportError:
