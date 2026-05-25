@@ -42,7 +42,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 def check_rate_limit(user_id, msg_type):
     # 1. 精準修改：文字(text)設定為 30 秒內只能傳 5 次
     limits = {
-        "text": (30, 5),      
+        "text": (30, 10),      
         "image": (60, 3),
         "gif": (60, 2),
         "video": (60, 1),
@@ -382,9 +382,9 @@ def handle_text(user_id, text):
         # ======= 【5. 聊天普通轉發與所有小遊戲輸入攔截】 =======
         result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
         if result.data:
-            if handle_guess and handle_guess(user_id, text): return
-            if handle_rps_move and handle_rps_move(user_id, text): return
-            if handle_undercover_vote and handle_undercover_vote(user_id, text): return
+            if handle_guess and handle_guess(user_id, text.strip()): return
+            if handle_rps_move and handle_rps_move(user_id, text.strip()): return
+            if handle_undercover_vote and handle_undercover_vote(user_id, text.strip()): return
             send_message(result.data[0]["partner_id"], f"{result.data[0]['nickname']}：{text}", tag="ACCOUNT_UPDATE")
         else:
             send_help_menu(user_id)
