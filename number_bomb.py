@@ -34,7 +34,7 @@ def start_ultimate_password(user_id, partner_id, nickname1, nickname2):
     start_msg = (
         f"🎮 終極密碼遊戲開始！範圍 1 ~ 100\n\n"
         f"👉 系統決定由【{starter_name}】先開始！\n"
-        f"請在對話框直接輸入：猜 數字 (例如：猜 50)\n\n"
+        f"請在對話框直接輸入：猜+空格+數字 (例如：猜 50)\n\n"
         f"⚠️ 提示：若中途不想玩了，任一方輸入「取消遊玩」即可結束遊戲。"
     )
     send_message(user_id, start_msg)
