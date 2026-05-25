@@ -128,16 +128,16 @@ def handle_guess(user_id, text):
     
     # 1. 給剛猜完的人（也就是目前的 user_id）看到的訊息
     msg_for_me = (
-        f"🎲 【 📢 你 】猜了 {guess}！沒中！\n"
-        f"📉 最新範圍縮小為：【 {new_min} ~ {new_max} 】\n\n"
+        f"【 📢 你 】猜了 {guess}！沒中！\n"
+        f"📉 範圍縮小為：【 {new_min} ~ {new_max} 】\n\n"
         f"⏳ 下一回合輪到 👉【 👤 對方 】填寫"
     )
     
     # 2. 給正在等待的人（也就是對方的 partner_id_db）看到的訊息
     msg_for_partner = (
-        f"🎲 【 👤 對方 】猜了 {guess}！沒中！\n"
-        f"📉 最新範圍縮小為：【 {new_min} ~ {new_max} 】\n\n"
-        f"⚔️ 下一回合輪到 👉【 📢 你 】出題囉！請輸入猜數字"
+        f"【 👤 對方 】猜了 {guess}！沒中！\n"
+        f"📉 範圍縮小為：【 {new_min} ~ {new_max} 】\n\n"
+        f"⚔️ 下一回合輪到 👉【 📢 你 】出題囉！請輸入:猜+數字"
     )
     
     # 分別投遞客製化訊息
