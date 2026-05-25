@@ -5,7 +5,7 @@ import random
 from datetime import datetime, timedelta, timezone
 from supabase import create_client
 
-# ======= 【安全防禦：終極密碼仍保留頂端匯入（因功能正常）】 =======
+# ======= 【安全防禦：動態安全匯入部分模組】 =======
 try:
     from number_bomb import start_ultimate_password, handle_guess
 except ImportError:
@@ -31,282 +31,399 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ==========================================
-# 🛡️ 防洗版（已整合：30秒限5次 ＆ 第一次觸發封鎖5分鐘）
+# 🛡️ 防洗版（30秒限10次 ＆ 自動禁言60秒機制）
 # ==========================================
-def check_rate_limit(user_id, msg_type="text"):
+def check_rate_limit(user_id, msg_type):
+    limits = {
+        "text": (30, 10),      
+        "image": (60, 3),
+        "gif": (60, 2),
+        "video": (60, 1),
+        "audio": (60, 3)
+    }
+    seconds, max_count = limits[msg_type]
     now = datetime.now(timezone.utc)
+    since_time = (now - timedelta(seconds=seconds)).isoformat()
+
+    result = supabase.table("rate_limits").select("*").eq("user_id", user_id).eq("msg_type", msg_type).gte("created_at", since_time).execute()
     
-    banned = supabase.table("banned_users").select("*").eq("user_id", user_id).limit(1).execute()
-    if banned.data:
-        expires_at = datetime.fromisoformat(banned.data[0]["expires_at"])
-        if now < expires_at:
-            return False
-        else:
-            supabase.table("banned_users").delete().eq("user_id", user_id).execute()
-            
-    window_start = now - timedelta(seconds=30)
-    window_start_str = window_start.isoformat()
-    
-    logs = supabase.table("rate_limits").select("*").eq("user_id", user_id).eq("msg_type", msg_type).gte("created_at", window_start_str).execute()
-    
-    if len(logs.data) >= 10:
-        ban_expires = now + timedelta(minutes=5)
-        supabase.table("banned_users").insert({
-            "user_id": user_id,
-            "expires_at": ban_expires.isoformat()
-        }).execute()
-        
-        send_message(user_id, "🚫 偵測到惡意洗版！你的帳號已被系統禁言 5 分鐘，請勿頻繁發送訊息。")
+    if len(result.data) >= max_count:
+        if msg_type == "text":
+            unban_time = (now + timedelta(seconds=60)).isoformat() 
+            try:
+                supabase.table("banned_users").upsert({
+                    "user_id": user_id,
+                    "reason": "文字傳送過快，系統自動禁言60秒",
+                    "expires_at": unban_time  
+                }).execute()
+                send_message(user_id, "🚨 警告：偵測到你傳送文字速度過快，已被系統自動禁言 60 秒！請稍候再試。")
+            except Exception as ban_err:
+                print("AUTOMATIC BAN ERROR:", ban_err)
         return False
-        
-    supabase.table("rate_limits").insert({
-        "user_id": user_id,
-        "msg_type": msg_type
-    }).execute()
+
+    supabase.table("rate_limits").insert({"user_id": user_id, "msg_type": msg_type}).execute()
     return True
 
-# ==========================================
-# 🚀 核心：文字訊息流總控
-# ==========================================
+# =========================
+# 暱稱系統 (原版原汁原味回歸)
+# =========================
+nickname_1 = ["星","月","白","夜","風","雨","雪","海","雲","光","石","黑","影","安","亮"]
+nickname_2 = ["空","辰","羽","夜","風","語","海","夢","森","歌","固","晨","霧","悟","凸"]
+
+def generate_nickname():
+    return f"{random.choice(nickname_1)}{random.choice(nickname_2)}"
+
+# =========================
+# FB 名稱獲取與快取 (原版回歸)
+# =========================
+def get_user_name(user_id):
+    try:
+        cached = supabase.table("users").select("*").eq("user_id", user_id).limit(1).execute()
+        if cached.data:
+            fb_name = cached.data[0].get("fb_name")
+            if fb_name:
+                supabase.table("users").update({"last_seen": datetime.now(timezone.utc).isoformat()}).eq("user_id", user_id).execute()
+                return fb_name
+
+        response = requests.get(
+            f"https://graph.facebook.com/v19.0/{user_id}",
+            params={"fields": "first_name,last_name,name", "access_token": PAGE_ACCESS_TOKEN},
+            timeout=15
+        )
+        response.raise_for_status()
+        data = response.json()
+        name = data.get("name") or (data.get("first_name", "") + " " + data.get("last_name", "")).strip()
+        if not name: name = "未知使用者"
+
+        supabase.table("users").upsert({"user_id": user_id, "fb_name": name, "last_seen": datetime.now(timezone.utc).isoformat()}).execute()
+        return name
+    except Exception as e:
+        print("GET USER NAME ERROR:", e)
+        try:
+            cached = supabase.table("users").select("*").eq("user_id", user_id).limit(1).execute()
+            if cached.data: return cached.data[0].get("fb_name", "未知使用者")
+        except: pass
+        return "未知使用者"
+
+# =========================
+# 發送文字與功能選單
+# =========================
+def send_message(user_id, text, tag=None):
+    try:
+        payload = {"recipient": {"id": user_id}, "message": {"text": text}}
+        payload["messaging_type"] = "MESSAGE_TAG" if tag else "RESPONSE"
+        if tag: payload["tag"] = tag
+
+        response = requests.post(
+            "https://graph.facebook.com/v25.0/me/messages",
+            headers={"Authorization": f"Bearer {PAGE_ACCESS_TOKEN}", "Content-Type": "application/json"},
+            json=payload, timeout=15
+        )
+        response.raise_for_status()
+    except Exception as e:
+        print("SEND MESSAGE ERROR:", e)
+
+def send_help_menu(user_id):
+    send_message(
+        user_id,
+        "🌌 歡迎使用匿名日誌 Whose log\n\n"
+        "📌 功能列表\n\n"
+        "💬 聊天功能\n"
+        "• 開始 / 0011\n"
+        "• 下一位 / 0033\n"
+        "• 離開 / 0088\n\n"
+        "🚫 安全功能\n"
+        "• 封鎖 / 0099\n"
+        "• 檢舉 / 0066\n"
+        "• 黑名單\n"
+        "• 解除封鎖\n\n"
+        "🎮 互動小遊戲（配對成功後方可輸入）\n"
+        "• 輸入【終極密碼】: 開啟猜數字炸彈遊戲\n"
+        "• 輸入【猜拳】: 開啟不留痕跡秘密猜拳\n"
+        "• 輸入【誰是臥底】: 開啟雙人詞彙臥底推理\n"
+        "• 輸入【取消遊玩】: 隨時終止進行中的小遊戲\n\n"
+        "目前還處在開發階段，人可能會比較少，請各位還手下留情，多多幫小編推廣感激!!"
+    )
+
+# =========================
+# 附件處理系統 (原版回歸)
+# =========================
+def send_attachment(user_id, attachment, tag=None):
+    try:
+        payload = {"recipient": {"id": user_id}, "message": {"attachment": attachment}}
+        payload["messaging_type"] = "MESSAGE_TAG" if tag else "RESPONSE"
+        if tag: payload["tag"] = tag
+        response = requests.post(
+            "https://graph.facebook.com/v25.0/me/messages",
+            headers={"Authorization": f"Bearer {PAGE_ACCESS_TOKEN}", "Content-Type": "application/json"},
+            json=payload, timeout=30
+        )
+        response.raise_for_status()
+    except Exception as e:
+        print("SEND ATTACHMENT ERROR:", e)
+
+def handle_attachment(user_id, attachments):
+    result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
+    if not result.data:
+        send_help_menu(user_id)
+        return
+    partner = result.data[0]["partner_id"]
+
+    for attachment in attachments:
+        try:
+            attachment_type = attachment.get("type", "")
+            url = attachment.get("payload", {}).get("url", "")
+            limit_type = None
+
+            if attachment_type == "image" and (".gif" in url.lower() or "gif" in url.lower()): limit_type = "gif"
+            elif attachment_type == "image": limit_type = "image"
+            elif attachment_type == "video": limit_type = "video"
+            elif attachment_type == "audio": limit_type = "audio"
+            elif attachment_type == "file":
+                send_message(user_id, "⚠️ 目前不支援檔案傳送")
+                continue
+
+            if limit_type and not check_rate_limit(user_id, limit_type):
+                msgs = {"image": "⚠️ 圖片傳送過快", "gif": "⚠️ GIF 傳送過快", "video": "⚠️ 影片傳送過快", "audio": "⚠️ 語音傳送過快"}
+                send_message(user_id, msgs[limit_type])
+                continue
+
+            if "payload" in attachment: attachment["payload"].pop("sticker_id", None)
+            send_attachment(partner, attachment, tag="ACCOUNT_UPDATE")
+        except Exception as e:
+            print("ATTACHMENT ERROR:", e)
+
+# =========================
+# 清理聊天室與風險分數 (原版完全體)
+# =========================
+def clear_chat_pair(user_id):
+    try:
+        result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
+        if result.data:
+            partner = result.data[0]["partner_id"]
+            supabase.table("chat_pairs").delete().or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute()
+            supabase.table("chat_pairs").delete().or_(f"user_id.eq.{partner},partner_id.eq.{partner}").execute()
+            supabase.table("waiting_users").delete().or_(f"user_id.eq.{user_id},user_id.eq.{partner}").execute()
+        supabase.table("pending_actions").delete().eq("user_id", user_id).execute()
+    except Exception as e:
+        print("CLEAR CHAT ERROR:", e)
+
+def ensure_user_stats(user_id):
+    check = supabase.table("user_stats").select("*").eq("user_id", user_id).limit(1).execute()
+    if not check.data: supabase.table("user_stats").insert({"user_id": user_id}).execute()
+
+def add_risk_score(user_id, block_add=0, report_add=0, risk_add=0):
+    ensure_user_stats(user_id)
+    current = supabase.table("user_stats").select("*").eq("user_id", user_id).limit(1).execute()
+    if not current.data: return
+    row = current.data[0]
+    supabase.table("user_stats").update({
+        "block_count": row["block_count"] + block_add,
+        "report_count": row["report_count"] + report_add,
+        "risk_score": row["risk_score"] + risk_add
+    }).eq("user_id", user_id).execute()
+
+# =========================
+# 24小時防重複配對系統 (原版完全體)
+# =========================
+def start_match(user_id):
+    if supabase.table("waiting_users").select("*").eq("user_id", user_id).execute().data:
+        send_message(user_id, "⏳ 你已經在等待配對中了，目前人數較少須等待，還請各位幫小編多多推廣!!")
+        return
+    if supabase.table("chat_pairs").select("*").eq("user_id", user_id).execute().data:
+        send_message(user_id, "💬 你目前已經在聊天中了")
+        return
+
+    waiting_users = supabase.table("waiting_users").select("*").neq("user_id", user_id).execute()
+    partner = None
+
+    for row in waiting_users.data:
+        target = row["user_id"]
+        if supabase.table("blacklist").select("*").eq("user_id", user_id).eq("blocked_user_id", target).execute().data: continue
+        if supabase.table("blacklist").select("*").eq("user_id", target).eq("blocked_user_id", user_id).execute().data: continue
+
+        one_day_ago = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        if supabase.table("recent_pairs").select("*").or_(f"and(user1.eq.{user_id},user2.eq.{target}),and(user1.eq.{target},user2.eq.{user_id})").gte("created_at", one_day_ago).execute().data: continue
+
+        partner = target
+        break
+
+    if partner:
+        supabase.table("waiting_users").delete().eq("user_id", partner).execute()
+        nickname1, nickname2 = generate_nickname(), generate_nickname()
+        fb_name1, fb_name2 = get_user_name(user_id), get_user_name(partner)
+
+        supabase.table("chat_pairs").insert([
+            {"user_id": user_id, "partner_id": partner, "nickname": nickname1, "partner_nickname": nickname2, "fb_name": fb_name1, "partner_fb_name": fb_name2},
+            {"user_id": partner, "partner_id": user_id, "nickname": nickname2, "partner_nickname": nickname1, "fb_name": fb_name2, "partner_fb_name": fb_name1}
+        ]).execute()
+        supabase.table("recent_pairs").insert({"user1": user_id, "user2": partner}).execute()
+
+        msg_template = "✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n👤 你的暱稱：{}\n💬 對方的暱稱：{}\n\n🎮 目前有新增小遊戲輸入「終極密碼」、「猜拳」或「誰是臥底」跟對方一起玩吧！"
+        send_message(user_id, msg_template.format(nickname1, nickname2))
+        send_message(partner, msg_template.format(nickname2, nickname1), tag="ACCOUNT_UPDATE")
+    else:
+        supabase.table("waiting_users").insert({"user_id": user_id}).execute()
+        send_message(user_id, "⏳ 等待配對中...目前人數較少須等待，還請各位幫小編多多推廣!!")
+
+# =========================
+# 文字處理核心 (無死結安全版)
+# =========================
 def handle_text(user_id, text):
-    text = text.strip()
+    # ⚙️ 修正：全形空格與半形空格雙重過濾防呆
+    clean_text = text.strip().replace(" ", "").replace(" ", "").replace("【", "").replace("】", "")
     
-    # ⚙️ 【核心修復點】：在 handle_text 每次執行時直接局域匯入最新、絕對不為 None 的遊戲模組！
-    # 這能徹底杜絕 Railway 動態加載快取混亂導致函數變成 None 的老地雷！
+    # ⚙️ 核心修復：移到此處動態載入最新小遊戲模組，徹底阻斷頂端變成 None 的老地雷
     try:
         from game_modules import start_rps, handle_rps_move, start_undercover, handle_undercover_vote, cancel_game
     except ImportError:
-        print("⚠️ [內部警告] handle_text 暫時無法加載 game_modules.py！")
         start_rps = handle_rps_move = start_undercover = handle_undercover_vote = cancel_game = None
 
-    # ======= 【1. 管理員廣播與指令系統】 =======
-    admin_ids = ["6564639913619557", "9563503117006764"]
-    if user_id in admin_ids:
-        if text.startswith("廣播 "):
-            bc_msg = text.replace("廣播 ", "").strip()
-            all_users = supabase.table("chat_pairs").select("user_id").execute()
-            sent_ids = set()
-            for u in all_users.data:
-                uid = u["user_id"]
-                if uid not in sent_ids:
-                    try: send_message(uid, f"📢 【系統廣播】\n\n{bc_msg}", tag="ACCOUNT_UPDATE"); sent_ids.add(uid)
-                    except: pass
-            send_message(user_id, f"✅ 廣播發送完畢，共發送給 {len(sent_ids)} 位用戶。")
+    try:
+        # ======= 【1. 優先核心攔截：取消遊玩】 =======
+        if clean_text == "取消遊玩":
+            if cancel_game and cancel_game(user_id): return
+            send_message(user_id, "❌ 目前沒有正在進行中的互動小遊戲喔！")
             return
+
+        # ======= 【2. 安全防禦：小遊戲開局攔截器】 =======
+        if clean_text in ["終極密碼", "猜拳", "誰是臥底"]:
+            result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
+            if not result.data:
+                send_message(user_id, "⚠️ 必須在聊天對話中才能開始遊戲喔！")
+                return
+                
+            partner, n1, n2 = result.data[0]["partner_id"], result.data[0]["nickname"], result.data[0]["partner_nickname"]
             
-        if text.startswith("解封 "):
-            target = text.replace("解封 ", "").strip()
-            supabase.table("banned_users").delete().eq("user_id", target).execute()
-            supabase.table("rate_limits").delete().eq("user_id", target).execute()
-            send_message(user_id, f"✅ 已手動解除用戶【{target}】的洗版封鎖狀態。")
-            return
-
-    # ======= 【2. 處理二次確認狀態 (Leave/Report 等)】 =======
-    pending = supabase.table("pending_actions").select("*").eq("user_id", user_id).limit(1).execute()
-    if pending.data:
-        p = pending.data[0]
-        if handle_pending_actions and handle_pending_actions(user_id, text, p["action"], p):
-            return
-
-    # ======= 【3. 基本配對與大廳導向指令】 =======
-    if text == "開始":
-        start_match(user_id)
-        return
-        
-    if text == "離開":
-        result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
-        if not result.data:
-            send_message(user_id, "❌ 你目前沒有配對對象。請輸入「開始」進行配對。")
-            return
-        supabase.table("pending_actions").insert({"user_id": user_id, "action": "confirm_leave"}).execute()
-        send_message(user_id, "⚠️ 確定要離開目前聊天室嗎？\n\n請回覆：\n1️⃣ 或 是\n2️⃣ 或 否")
-        return
-        
-    if text in ["檢舉", "下一位"]:
-        result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
-        if not result.data:
-            send_message(user_id, "❌ 你目前沒有配對對象。")
-            return
-        act = "confirm_report" if text == "檢舉" else "confirm_next"
-        prompt = "⚠️ 確定要檢舉對方嗎？" if text == "檢舉" else "⚠️ 確定要跳過此人、尋找下一位嗎？"
-        supabase.table("pending_actions").insert({"user_id": user_id, "action": act}).execute()
-        send_message(user_id, f"{prompt}\n\n請回覆：\n1️⃣ 或 是\n2️⃣ 或 否")
-        return
-
-    # ======= 【4. 小遊戲發起開局判斷】 =======
-    pair_res = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
-    if pair_res.data:
-        partner = pair_res.data[0]["partner_id"]
-        n1 = pair_res.data[0]["nickname"]
-        
-        part_res = supabase.table("chat_pairs").select("nickname").eq("user_id", partner).limit(1).execute()
-        n2 = part_res.data[0]["nickname"] if part_res.data else "路人"
-        
-        clean_text = text.strip().replace(" ", "").replace(" ", "").replace("【", "").replace("】", "")
-        
-        if clean_text == "取消遊玩" and cancel_game:
-            if cancel_game(user_id): return
+            has_bomb = supabase.table("game_ultimate_password").select("id").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute().data
+            has_rps = supabase.table("game_rps").select("id").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute().data
+            has_spy = supabase.table("game_undercover").select("id").eq("is_active", True).or_(f"user_id.eq.{user_id},partner_id.eq.{user_id}").execute().data
             
-        elif clean_text == "猜數字" and start_ultimate_password:
-            start_ultimate_password(user_id, partner, n1, n2)
+            if has_bomb or has_rps or has_spy:
+                send_message(user_id, "⚠️ 目前已有互動小遊戲正在進行中，不能重複開啟！\n\n請先將當前遊戲玩完，或輸入「取消遊玩」結束遊戲後，才能開啟新局喔！")
+                return
+
+            if clean_text == "終極密碼" and start_ultimate_password: start_ultimate_password(user_id, partner, n1, n2)
+            elif clean_text == "猜拳" and start_rps: start_rps(user_id, partner, n1, n2)
+            elif clean_text == "誰是臥底" and start_undercover: start_undercover(user_id, partner, n1, n2)
             return
-        elif clean_text == "猜拳" and start_rps:
-            start_rps(user_id, partner, n1, n2)
+
+        # ======= 【3. 外部化Pending指令處理】 =======
+        pending = supabase.table("pending_actions").select("*").eq("user_id", user_id).limit(1).execute()
+        if pending.data:
+            if handle_pending_actions and handle_pending_actions(user_id, text, pending.data[0]["action"], pending.data[0]):
+                return
+
+        # ======= 【4. 行政/常規快捷指令觸發】 =======
+        if clean_text in ["開始", "0011"]: start_match(user_id); return
+        if clean_text in ["取消配對", "0022"]:
+            if not supabase.table("waiting_users").select("*").eq("user_id", user_id).execute().data:
+                send_message(user_id, "❌ 目前沒有在等待配對")
+                return
+            supabase.table("waiting_users").delete().eq("user_id", user_id).execute()
+            send_message(user_id, "✅ 已取消配對"); return
+
+        if clean_text in ["下一位", "0033", "離開", "0088", "封鎖", "0099", "檢舉", "0066"]:
+            result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
+            if not result.data:
+                send_message(user_id, "目前沒有聊天對象")
+                return
+            partner = result.data[0]["partner_id"]
+            supabase.table("pending_actions").delete().eq("user_id", user_id).execute()
+            
+            if clean_text in ["下一位", "0033"]:
+                supabase.table("pending_actions").insert({"user_id": user_id, "action": "confirm_next"}).execute()
+                send_message(user_id, "⚠️ 確定要離開目前聊天室並尋找下一位嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否")
+            elif clean_text in ["離開", "0088"]:
+                supabase.table("pending_actions").insert({"user_id": user_id, "action": "confirm_leave"}).execute()
+                send_message(user_id, "⚠️ 確定要離開聊天室嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否")
+            elif clean_text in ["封鎖", "0099"]:
+                if supabase.table("blacklist").select("*").eq("user_id", user_id).eq("blocked_user_id", partner).execute().data:
+                    send_message(user_id, "⚠️ 你已經封鎖過此人"); return
+                supabase.table("pending_actions").insert({"user_id": user_id, "action": "confirm_block"}).execute()
+                send_message(user_id, "⚠️ 確定要封鎖對方嗎？\n\n請回覆：\n\n1️⃣ 或 是\n2️⃣ 或 否")
+            elif clean_text in ["檢舉", "0066"]:
+                supabase.table("pending_actions").insert({"user_id": user_id, "action": "report_reason", "target_user_id": partner}).execute()
+                send_message(user_id, "🚨 請輸入檢舉原因\n\n如果不想檢舉了請輸入：返回")
             return
-        elif clean_text == "誰是臥底" and start_undercover:
-            start_undercover(user_id, partner, n1, n2)
+
+        if clean_text == "黑名單":
+            res = supabase.table("blacklist").select("*").eq("user_id", user_id).execute()
+            if not res.data: send_message(user_id, "📭 黑名單目前是空的"); return
+            send_message(user_id, "🚫 黑名單列表\n\n" + "".join([f"{i}. 使用者 {r['blocked_user_id'][-6:]}\n" for i, r in enumerate(res.data, start=1)])); return
+
+        if clean_text == "解除封鎖":
+            res = supabase.table("blacklist").select("*").eq("user_id", user_id).execute()
+            if not res.data: send_message(user_id, "📭 目前沒有封鎖任何人"); return
+            send_message(user_id, "🔓 請輸入要解除封鎖的編號\n\n" + "".join([f"{i}. 使用者 {r['blocked_user_id'][-6:]}\n" for i, r in enumerate(res.data, start=1)]) + "\n例如：解除封鎖 1")
             return
+
+        if clean_text.startswith("解除封鎖"):
+            try: index = int(text.split()[1]) - 1
+            except: send_message(user_id, "❌ 格式錯誤"); return
+            res = supabase.table("blacklist").select("*").eq("user_id", user_id).execute()
+            if index < 0 or index >= len(res.data): send_message(user_id, "❌ 找不到此編號"); return
+            supabase.table("blacklist").delete().eq("user_id", user_id).eq("blocked_user_id", res.data[index]["blocked_user_id"]).execute()
+            send_message(user_id, "✅ 已成功解除封鎖"); return
+
+        if clean_text in ["解除配對限制", "2222"]:
+            supabase.table("recent_pairs").delete().or_(f"user1.eq.{user_id},user2.eq.{user_id}").execute()
+            send_message(user_id, "✅ 已解除配對限制"); return
 
         # ======= 【5. 聊天普通轉發與所有小遊戲輸入攔截】 =======
         result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
         if result.data:
+            # ⚙️ 修正：丟進去小遊戲判斷的參數也同步做好 text.strip() 處理
             if handle_guess and handle_guess(user_id, text.strip()): return
             if handle_rps_move and handle_rps_move(user_id, text.strip()): return
             if handle_undercover_vote and handle_undercover_vote(user_id, text.strip()): return
-            
-            # 若無小遊戲攔截，執行普通訊息轉發
             send_message(result.data[0]["partner_id"], f"{result.data[0]['nickname']}：{text}", tag="ACCOUNT_UPDATE")
-            return
-
-    send_message(user_id, "💡 目前沒有配對對象。請輸入「開始」啟動匿名配對！")
-
-# ==========================================
-# 📁 附件流轉發（照片/貼圖/影片等）
-# ==========================================
-def handle_attachment(user_id, attachments):
-    if not check_rate_limit(user_id, "attachment"):
-        return
-        
-    result = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
-    if not result.data:
-        send_message(user_id, "💡 目前沒有配對對象，無法發送多媒體物件。請輸入「開始」進行配對！")
-        return
-        
-    partner_id = result.data[0]["partner_id"]
-    my_name = result.data[0]["nickname"]
-    
-    for attach in attachments:
-        payload = {"recipient": {"id": partner_id}, "message": {}}
-        
-        if attach["type"] == "fallback":
-            if "sticker_id" in attach:
-                payload["message"] = {"attachment": {"type": "image", "payload": {"url": attach["url"]}}}
-            else:
-                send_message(partner_id, f"🔗 {my_name} 傳送了一個連結：\n{attach['url']}", tag="ACCOUNT_UPDATE")
-                continue
         else:
-            payload["message"] = {"attachment": {"type": attach["type"], "payload": {"url": attach["payload"]["url"]}}}
-            
-        try:
-            send_message(partner_id, f"🖼️ {my_name} 傳送了多媒體物件：", tag="ACCOUNT_UPDATE")
-            headers = {"Content-Type": "application/json"}
-            requests.post(f"https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}", json=payload, headers=headers)
-        except:
-            pass
+            send_help_menu(user_id)
+    except Exception as e:
+        print("HANDLE_TEXT ERROR:", e)
 
-# ==========================================
-# 🔍 基礎功能：系統配對邏輯
-# ==========================================
-def start_match(user_id):
-    existing = supabase.table("chat_pairs").select("*").eq("user_id", user_id).limit(1).execute()
-    if existing.data:
-        send_message(user_id, "⚠️ 你已經在聊天室中囉！若想離開請輸入「離開」。")
-        return
-        
-    supabase.table("queue").delete().eq("user_id", user_id).execute()
-    
-    blacklist_res = supabase.table("blacklist").select("blocked_user_id").eq("user_id", user_id).execute()
-    my_blocked = [b["blocked_user_id"] for b in blacklist_res.data]
-    
-    by_others_res = supabase.table("blacklist").select("user_id").eq("blocked_user_id", user_id).execute()
-    who_blocked_me = [b["user_id"] for b in by_others_res.data]
-    
-    illegal_ids = list(set(my_blocked + who_blocked_me))
-    
-    query = supabase.table("queue").select("*").order("created_at")
-    if illegal_ids:
-        query = query.not_.in_("user_id", illegal_ids)
-        
-    waiting_user = query.limit(1).execute()
-    
-    if waiting_user.data:
-        partner_id = waiting_user.data[0]["user_id"]
-        supabase.table("queue").delete().eq("user_id", partner_id).execute()
-        
-        adjectives = ["神秘的", "愛笑的", "孤獨的", "熱情的", "呆萌的", "霸氣的", "溫柔的", "搞笑的", "傲嬌的", "文青的"]
-        nouns = ["貓咪", "哈士奇", "柴犬", "企鵝", "小鹿", "倉鼠", "熊貓", "狐狸", "樹懶", "考拉"]
-        
-        name1 = f"{random.choice(adjectives)}{random.choice(nouns)}"
-        name2 = f"{random.choice(adjectives)}{random.choice(nouns)}"
-        while name1 == name2:
-            name2 = f"{random.choice(adjectives)}{random.choice(nouns)}"
-            
-        supabase.table("chat_pairs").insert([
-            {"user_id": user_id, "partner_id": partner_id, "nickname": name1},
-            {"user_id": partner_id, "partner_id": user_id, "nickname": name2}
-        ]).execute()
-        
-        welcome_msg1 = f"🎉 配對成功囉！系統已為您匹配了一位聊天對象！\n\n🥸 你的匿名暱稱是：【{name1}】\n👤 對方的匿名暱稱是：【{name2}】\n\n💬 現在可以直接打字聊天囉！\n💡 提示：輸入「離開」可結束聊天；輸入「猜數字」、「猜拳」或「誰是臥底」可啟動小遊戲！"
-        welcome_msg2 = f"🎉 配對成功囉！系統已為您匹配了一位聊天對象！\n\n🥸 你的匿名暱稱是：【{name2}】\n👤 對方的匿名暱稱是：【{name1}】\n\n💬 現在可以直接打字聊天囉！\n💡 提示：輸入「離開」可結束聊天；輸入「猜數字」、「猜拳」或「誰是臥底」可啟動小遊戲！"
-        
-        send_message(user_id, welcome_msg1)
-        send_message(partner_id, welcome_msg2, tag="ACCOUNT_UPDATE")
-    else:
-        supabase.table("queue").insert({"user_id": user_id}).execute()
-        send_message(user_id, "🔍 正在為您搜尋聊天對象，請稍候...\n💡 提示：若不想排隊了，輸入「離開」即可退出佇列。")
+# =========================
+# Webhook 驗證與接收
+# =========================
+@app.route("/webhook", methods=["GET"])
+def verify():
+    if request.args.get("hub.verify_token") == VERIFY_TOKEN: return request.args.get("hub.challenge")
+    return "驗證失敗"
 
-def clear_chat_pair(user_id):
-    result = supabase.table("chat_pairs").select("partner_id").eq("user_id", user_id).limit(1).execute()
-    if result.data:
-        partner_id = result.data[0]["partner_id"]
-        supabase.table("chat_pairs").delete().eq("user_id", user_id).execute()
-        supabase.table("chat_pairs").delete().eq("user_id", partner_id).execute()
-        for table in ["game_ultimate_password", "game_rps", "game_undercover"]:
-            supabase.table(table).delete().or_(f"user_id.eq.{user_id},user_id.eq.{partner_id}").execute()
-    else:
-        supabase.table("queue").delete().eq("user_id", user_id).execute()
-
-# ==========================================
-# 🛠️ 基礎發送工具發送 Messenger API
-# ==========================================
-def send_message(recipient_id, message_text, tag=None):
-    url = f"https://graph.facebook.com/v12.0/me/messages?access_token={PAGE_ACCESS_TOKEN}"
-    headers = {"Content-Type": "application/json"}
-    payload = {
-        "recipient": {"id": recipient_id},
-        "message": {"text": message_text}
-    }
-    if tag:
-        payload["messaging_type"] = "MESSAGE_TAG"
-        payload["tag"] = tag
-    response = requests.post(url, json=payload, headers=headers)
-    return response.json()
-
-# ==========================================
-# 🔗 Webhook 路由端點
-# ==========================================
-@app.route("/", methods=["GET", "POST"])
+@app.route("/webhook", methods=["POST"])
 def webhook():
-    if request.method == "GET":
-        if request.args.get("hub.verify_token") == VERIFY_TOKEN:
-            return request.args.get("hub.challenge")
-        return "Verification token mismatch", 403
-        
-    if request.method == "POST":
-        data = request.json
-        if data.get("object") == "page":
-            for entry in data.get("entry", []):
+    data = request.json
+    if data.get("object") in ["page", "instagram"]:
+        for entry in data.get("entry", []):
+            if "changes" in entry:
+                for change in entry.get("changes", []):
+                    value = change.get("value", {})
+                    if "messages" in value:
+                        for msg in value["messages"]:
+                            sender_id = msg["from"]["id"]
+                            try:
+                                now_str = datetime.now(timezone.utc).isoformat()
+                                supabase.table("banned_users").delete().eq("user_id", sender_id).lt("expires_at", now_str).execute()
+                            except: pass
+                                
+                            if "text" in msg:
+                                if not check_rate_limit(sender_id, "text"): pass
+                                else: handle_text(sender_id, msg["text"])
+                            if "attachments" in msg: handle_attachment(sender_id, msg["attachments"])
+            if "messaging" in entry:
                 for messaging_event in entry.get("messaging", []):
-                    sender_id = messaging_event.get("sender", {}).get("id")
-                    if not sender_id:
-                        continue
-                        
+                    sender_id = messaging_event["sender"]["id"]
+                    if "postback" in messaging_event:
+                        payload = messaging_event["postback"]["payload"]
+                        if payload == "GET_STARTED": send_help_menu(sender_id)
+                        elif payload in ["START_CHAT", "LEAVE_CHAT"]: handle_text(sender_id, "開始" if payload == "START_CHAT" else "離開")
+
                     if "message" in messaging_event:
-                        now_str = datetime.now(timezone.utc).isoformat()
                         try:
-                            supabase.table("user_logs").insert({"user_id": sender_id, "last_active": now_str}).execute()
-                        except:
-                            pass
+                            now_str = datetime.now(timezone.utc).isoformat()
+                            supabase.table("banned_users").delete().eq("user_id", sender_id).lt("expires_at", now_str).execute()
+                        except: pass
 
                         if supabase.table("banned_users").select("*").eq("user_id", sender_id).limit(1).execute().data:
                             ban_entry = supabase.table("banned_users").select("expires_at").eq("user_id", sender_id).limit(1).execute()
@@ -317,19 +434,15 @@ def webhook():
                                     if rem > 0:
                                         send_message(sender_id, f"🚫 你的帳號目前處於洗版禁言狀態，還剩 {rem} 秒解封。")
                                         continue
-                                except:
-                                    pass
+                                except: pass
                             send_message(sender_id, "🚫 你的帳號已被停權")
                             continue
                             
                         message = messaging_event["message"]
                         if "text" in message:
-                            if not check_rate_limit(sender_id, "text"):
-                                pass
-                            else:
-                                handle_text(sender_id, message["text"])
-                        if "attachments" in message:
-                            handle_attachment(sender_id, message["attachments"])
+                            if not check_rate_limit(sender_id, "text"): pass 
+                            else: handle_text(sender_id, message["text"])
+                        if "attachments" in message: handle_attachment(sender_id, message["attachments"])
     return "ok", 200
 
 if __name__ == "__main__":
