@@ -64,16 +64,21 @@ def handle_guess(user_id, text):
         send_message(user_id, "⚠️ 還沒輪到你喔！請等待對方先猜。如果要猜50的話要照格式，舉例:猜 50(一定要輸入:猜+空格+猜的數字)不能單一數字")
         return True 
 
-    # 取出後面的純數字
     try:
-        guess = int(text.replace("猜", "").strip())
-    except:
-        send_message(user_id, "⚠️ 格式錯誤！請輸入：猜 50")
-        return True 
-
-    # 執行猜數字邏輯...
-    secret = game["secret_number"]
-    min_r, max_r = game["min_range"], game["max_range"]
+            guess = int(text.replace("猜", "").strip())
+        except:
+            send_message(user_id, "⚠️ 格式錯誤！請輸入：猜 50")
+            return True 
+    
+        # 撈出當前的密碼與最新上下限範圍
+        secret = game["secret_number"]
+        min_r, max_r = game["min_range"], game["max_range"]
+    
+        # 🚨【新增：超範圍防呆防護網】
+        # 既然範圍是 min_r ~ max_r，猜的值就必須在這個開區間內（不能小於等於下限，不能大於等於上限）
+        if guess <= min_r or guess >= max_r:
+            send_message(user_id, f"⚠️ 超出當前有效範圍！目前範圍是 【{min_r} ~ {max_r}】，請重新輸入在這個範圍內的數字。")
+            return True
     partner_id_db = game["user_id"] if game["partner_id"] == user_id else game["partner_id"]
 
     # 範圍檢查與判定邏輯 (同前)
