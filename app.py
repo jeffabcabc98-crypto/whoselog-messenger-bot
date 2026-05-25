@@ -14,12 +14,6 @@ except ImportError:
     handle_guess = None
 
 try:
-    from game_modules import start_rps, handle_rps_move, start_undercover, handle_undercover_vote, cancel_game
-except ImportError:
-    print("⚠️ [警告] 伺服器暫時找不到 game_modules.py 模組！")
-    start_rps = handle_rps_move = start_undercover = handle_undercover_vote = cancel_game = None
-
-try:
     from actions import handle_pending_actions
 except ImportError:
     print("⚠️ [警告] 伺服器暫時找不到 actions.py 模組！")
@@ -287,9 +281,20 @@ def start_match(user_id):
 # =========================
 def handle_text(user_id, text):
     text = text.strip()
+    
+    # 🎯 把載入遊戲的動作完美放在這裡，並且空格一律對齊！
     try:
-        # ======= 【1. 優先核心攔截：取消遊玩】 =======
-        if text == "取消遊玩":
+        from game_modules import start_rps, handle_rps_move, start_undercover, handle_undercover_vote, cancel_game
+    except ImportError:
+        print("⚠️ [內部警告] 暫時無法加載 game_modules.py！")
+        start_rps = handle_rps_move = start_undercover = handle_undercover_vote = cancel_game = None
+
+    # ======= 【1. 管理員廣播與指令系統】 =======
+    admin_ids = ["6564639913619557", "9563503117006764"]
+    if user_id in admin_ids:
+    
+            # ======= 【1. 優先核心攔截：取消遊玩】 =======
+            if text == "取消遊玩":
             if cancel_game and cancel_game(user_id): return
             send_message(user_id, "❌ 目前沒有正在進行中的互動小遊戲喔！")
             return
