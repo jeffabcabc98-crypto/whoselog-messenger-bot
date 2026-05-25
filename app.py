@@ -31,6 +31,9 @@ app = Flask(__name__)
 PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 
+# 👇 新增這一行（填入你的 FB 帳號 ID，必須是字串）
+ADMIN_IDS = ["你的FB_USER_ID", "第二個管理員的ID"]
+
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
@@ -288,6 +291,42 @@ def start_match(user_id):
 def handle_text(user_id, text):
     text = text.strip()
     try:
+        # ==========================================================
+        # 📢 【新增：管理員全體廣播系統】
+        # ==========================================================
+        if text.startswith("廣播 "):
+            # 檢查發送者是否在管理員名單內
+            if str(user_id) not in ADMIN_IDS and user_id not in ADMIN_IDS:
+                send_message(user_id, "⚠️ 錯誤：你沒有權限使用此指令。")
+                return
+            
+            # 提取要廣播的文字
+            broadcast_msg = text.replace("廣播 ", "", 1).strip()
+            if not broadcast_msg:
+                send_message(user_id, "⚠️ 請輸入要廣播的內容，例如：廣播 大家好！")
+                return
+            
+            send_message(user_id, "📢 正在開始全體廣播，請稍候...")
+            
+            # 從你的 Supabase 撈取所有使用者
+            all_users = supabase.table("users").select("user_id").execute()
+            
+            success_count = 0
+            fail_count = 0
+            
+            for row in all_users.data:
+                target_id = row["user_id"]
+                try:
+                    # 帶上 ACCOUNT_UPDATE tag 避開 24 小時主動推播限制
+                    send_message(target_id, f"📢 【系統公告】\n\n{broadcast_msg}", tag="ACCOUNT_UPDATE")
+                    success_count += 1
+                except Exception as send_err:
+                    print(f"廣播發送失敗給 {target_id}:", send_err)
+                    fail_count += 1
+            
+            send_message(user_id, f"✅ 廣播發送完畢！\n成功：{success_count} 人\n失敗：{fail_count} 人")
+            return
+        # ==========================================================
         # ======= 【1. 優先核心攔截：取消遊玩】 =======
         if text == "取消遊玩":
             if cancel_game and cancel_game(user_id): return
