@@ -102,7 +102,7 @@ def get_user_name(user_id):
                 return fb_name
 
         response = requests.get(
-            f"https://graph.facebook.com/v19.0/{user_id}",
+            f"https://graph.facebook.com/v25.0/{user_id}",
             params={"fields": "first_name,last_name,name", "access_token": PAGE_ACCESS_TOKEN},
             timeout=15
         )
