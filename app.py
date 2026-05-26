@@ -327,6 +327,76 @@ def handle_text(user_id, text):
             send_message(user_id, f"✅ 廣播發送完畢！\n成功：{success_count} 人\n失敗：{fail_count} 人")
             return
         # ==========================================================
+        # 🚫 【新增：管理員手動禁言/封鎖系統】
+        # ==========================================================
+        if text.startswith("ban ") or text.startswith("BAN "):
+            # 檢查發送者是否在管理員名單內
+            if str(user_id) not in ADMIN_IDS and user_id not in ADMIN_IDS:
+                send_message(user_id, "⚠️ 錯誤：你沒有權限使用此指令。")
+                return
+            
+            # 提取要 ban 的 user_id 與時間 (格式: ban [ID] [秒數])
+            # 例如：ban 1052884737916573 3600 (封鎖一小時)
+            parts = text.split()
+            if len(parts) < 2:
+                send_message(user_id, "⚠️ 格式錯誤！使用範例：\nban [使用者ID] [選擇性：秒數，預設永久]")
+                return
+                
+            target_id = parts[1].strip()
+            
+            # 計算過期時間
+            if len(parts) >= 3 and parts[2].isdigit():
+                seconds = int(parts[2])
+                unban_time = (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat()
+                time_msg = f" 禁言 {seconds} 秒"
+            else:
+                # 如果沒輸入秒數，設定一個極長的時間代表永久封鎖 (例如 100 年後)
+                unban_time = (datetime.now(timezone.utc) + timedelta(days=36500)).isoformat()
+                time_msg = "永久停權"
+
+            try:
+                # 塞入 banned_users 資料表 (對齊你目前的欄位名稱)
+                supabase.table("banned_users").upsert({
+                    "user_id": target_id,
+                    "reason": f"管理員 {user_id} 手動執行指令",
+                    "expires_at": unban_time
+                }).execute()
+                
+                # 偵測該用戶目前有沒有在聊天室，有的話強制把他踢掉
+                result = supabase.table("chat_pairs").select("*").eq("user_id", target_id).limit(1).execute()
+                if result.data:
+                    clear_chat_pair(target_id)
+                    try:
+                        send_message(result.data[0]["partner_id"], "⚠️ 對方因違反規範，已被系統強制帶離聊天室。", tag="ACCOUNT_UPDATE")
+                    except: pass
+                
+                # 通知管理員與該用戶
+                send_message(user_id, f"✅ 已成功將使用者 {target_id} 執行【{time_msg}】。")
+                send_message(target_id, f"🚨 系統公告：你的帳號因違反使用規範，已被管理員處以【{time_msg}】。")
+            except Exception as err:
+                send_message(user_id, f"❌ 寫入資料庫失敗，請檢查欄位或 ID。錯誤：{err}")
+            return
+
+        if text.startswith("unban ") or text.startswith("UNBAN "):
+            if str(user_id) not in ADMIN_IDS and user_id not in ADMIN_IDS:
+                send_message(user_id, "⚠️ 錯誤：你沒有權限使用此指令。")
+                return
+                
+            parts = text.split()
+            if len(parts) != 2:
+                send_message(user_id, "⚠️ 格式錯誤！使用範例：unban [使用者ID]")
+                return
+                
+            target_id = parts[1].strip()
+            try:
+                supabase.table("banned_users").delete().eq("user_id", target_id).execute()
+                send_message(user_id, f"✅ 已成功解除使用者 {target_id} 的禁言狀態。")
+                send_message(target_id, f"🔓 系統公告：你的帳號已被管理員解除限制，歡迎重新回歸遊玩！")
+            except Exception as err:
+                send_message(user_id, f"❌ 解封失敗：{err}")
+            return
+        # ==========================================================
+        # ==========================================================
         # ======= 【1. 優先核心攔截：取消遊玩】 =======
         if text == "取消遊玩":
             if cancel_game and cancel_game(user_id): return
