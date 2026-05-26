@@ -32,7 +32,7 @@ PAGE_ACCESS_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
 
 # 👇 新增這一行（填入你的 FB 帳號 ID，必須是字串）
-ADMIN_IDS = ["1052884737916573", "第二個管理員的ID"]
+ADMIN_IDS = ["100011962753782", "第二個管理員的ID"]
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
