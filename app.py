@@ -276,7 +276,22 @@ def start_match(user_id):
             {"user_id": user_id, "partner_id": partner, "nickname": nickname1, "partner_nickname": nickname2, "fb_name": fb_name1, "partner_fb_name": fb_name2},
             {"user_id": partner, "partner_id": user_id, "nickname": nickname2, "partner_nickname": nickname1, "fb_name": fb_name2, "partner_fb_name": fb_name1}
         ]).execute()
-        supabase.table("recent_pairs").insert({"user1": user_id, "user2": partner}).execute()
+
+        # 🟢 1. 寫入原本的防重複配對表（加入了雙方暱稱，這張表你可以定期清空）
+        supabase.table("recent_pairs").insert({
+            "user1": user_id, 
+            "user2": partner,
+            "user1_nickname": nickname1,
+            "user2_nickname": nickname2
+        }).execute()
+
+        # 🟢 2. 同步寫入你建立的中文備註「配對歷史總紀錄表」（永久保留不刪除）
+        supabase.table("match_logs").insert({
+            "user1": user_id, 
+            "user2": partner,
+            "user1_nickname": nickname1,
+            "user2_nickname": nickname2
+        }).execute()
 
         msg_template = "✅ 配對成功！打聲招呼讓對方知道你的存在吧！\n👤 你的暱稱：{}\n💬 對方的暱稱：{}\n\n🎮 目前有新增小遊戲輸入「終極密碼」、「猜拳」或「誰是臥底」跟對方一起玩吧！"
         send_message(user_id, msg_template.format(nickname1, nickname2))
