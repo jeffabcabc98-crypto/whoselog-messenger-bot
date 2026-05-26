@@ -346,19 +346,33 @@ def handle_text(user_id, text):
                 send_message(user_id, "⚠️ 錯誤：你沒有權限使用此指令。")
                 return
             
-            parts = text.split(maxsplit=2)
+            # 使用標準切分，以便精準抓取四個參數
+            parts = text.split()
             if len(parts) < 3:
-                send_message(user_id, "⚠️ 格式錯誤！使用範例：\nBAN 2639218870459973 惡意散播公審及人身攻擊言論")
+                send_message(user_id, "⚠️ 格式錯誤！使用範例：\n永久：BAN [ID] [原因]\n定時：BAN [ID] [秒數] [原因]")
                 return
                 
             target_id = parts[1].strip()
-            ban_reason = parts[2].strip()
+            
+            # 判斷第二個參數是否為純數字（代表有設定秒數）
+            if parts[2].isdigit():
+                seconds = int(parts[2])
+                unban_time = (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat()
+                time_msg = f"禁言 {seconds} 秒"
+                # 原因就是從第三個參數開始後的所有文字
+                ban_reason = " ".join(parts[3:]) if len(parts) > 3 else "違反社群規範"
+            else:
+                # 若不是數字，代表沒設秒數，執行永久封鎖
+                unban_time = None
+                time_msg = "永久停權"
+                # 原因就是從第二個參數開始後的所有文字
+                ban_reason = " ".join(parts[2:])
 
             try:
                 supabase.table("banned_users").upsert({
                     "user_id": target_id,
                     "reason": ban_reason,
-                    "expires_at": None
+                    "expires_at": unban_time
                 }).execute()
                 
                 result = supabase.table("chat_pairs").select("*").eq("user_id", target_id).limit(1).execute()
@@ -370,11 +384,11 @@ def handle_text(user_id, text):
                         pass
                 
                 try:
-                    send_message(target_id, f"🚨 系統公告：你的帳號因違反使用規範，已被管理員處以【永久停權】。\n停權原因：【 {ban_reason} 】", tag="ACCOUNT_UPDATE")
+                    send_message(target_id, f"🚨 系統公告：你的帳號因違反使用規範，已被管理員處以【{time_msg}】。\n停權原因：【 {ban_reason} 】", tag="ACCOUNT_UPDATE")
                 except:
                     pass
 
-                send_message(user_id, f"✅ 已成功將使用者 {target_id} 執行【永久停權】。\n原因：{ban_reason}")
+                send_message(user_id, f"✅ 已成功將使用者 {target_id} 執行【{time_msg}】。\n原因：{ban_reason}")
             except Exception as err:
                 send_message(user_id, f"❌ 寫入資料庫失敗，請檢查欄位或 ID。錯誤：{err}")
             return
