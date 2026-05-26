@@ -560,19 +560,30 @@ def webhook():
                         except:
                             pass
 
-                        if supabase.table("banned_users").select("*").eq("user_id", sender_id).limit(1).execute().data:
-                            # 讀取剩餘時間提示玩家
-                            ban_entry = supabase.table("banned_users").select("expires_at").eq("user_id", sender_id).limit(1).execute()
-                            if ban_entry.data and ban_entry.data[0].get("expires_at"):
+                        # 🛡️ 【核心攔截：檢查用戶是否在 banned_users 黑名單中】
+                        ban_check = supabase.table("banned_users").select("*").eq("user_id", sender_id).limit(1).execute()
+                        if ban_check.data:
+                            ban_entry = ban_check.data[0]
+                            expires_at = ban_entry.get("expires_at")
+                            
+                            # 🎯 精準讀取你在 Supabase 後台手填的 reason 欄位
+                            reason = ban_entry.get("reason") or "違反社群使用規範"
+
+                            # 狀況 A：洗版被系統自動禁言（check_rate_limit 會產生倒數時間）
+                            if expires_at:
                                 try:
-                                    exp = datetime.fromisoformat(ban_entry.data[0]["expires_at"])
+                                    exp = datetime.fromisoformat(expires_at)
                                     rem = int((exp - datetime.now(timezone.utc)).total_seconds())
                                     if rem > 0:
-                                        send_message(sender_id, f"🚫 你的帳號目前處於洗版禁言狀態，還剩 {rem} 秒解封。")
+                                        send_message(sender_id, f"🚫 你的帳號目前處於禁言狀態，還剩 {rem} 秒解封。\n原因：{reason}")
                                         continue
                                 except:
                                     pass
-                            send_message(sender_id, "🚫 你的帳號已被停權"); continue
+                            
+                            # 狀況 B：管理員在 Supabase 手動新增的永久封鎖（expires_at 保持為空 NULL）
+                            else:
+                                send_message(sender_id, f"🚫 你的帳號已被管理員永久停權。\n停權原因：【 {reason} 】\n\n如有疑問請私訊粉專向小編申訴。")
+                                continue
                             
                         message = messaging_event["message"]
                         if "text" in message:
